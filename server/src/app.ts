@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { type Express } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +9,7 @@ import { apiRouter } from './routes/api.router.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export const app = express();
+export const app: Express = express();
 
 // Middleware: Body parsing with sensible limits
 app.use(express.json({ limit: '10mb' }));

@@ -1,10 +1,12 @@
 import { Router } from 'express';
+import { analysisRouter } from './analysis.router.js';
 import { healthRouter } from './health.router.js';
 
-export const apiRouter = Router();
+export const apiRouter: Router = Router();
 
 // Mount sub-routers
 apiRouter.use(healthRouter);
+apiRouter.use(analysisRouter);
 
 // Unknown API routes fallback (returns JSON 404)
 apiRouter.use((req, res) => {

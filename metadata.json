@@ -1,0 +1,8 @@
+{
+  "name": "DesignDNA",
+  "description": "Transform website screenshots into structured, developer-friendly design systems with deterministic colour extraction and AI-powered visual interpretation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -15,7 +15,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(5000),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL: z.string().default('gemini-2.5-flash')
+  GEMINI_MODEL: z.string().default('gemini-4-hydrogen')
 });
 
 const parsed = envSchema.safeParse(process.env);

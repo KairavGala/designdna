@@ -1,7 +1,7 @@
 import { app } from './app.js';
 import { env } from './config/env.js';
 
-const server = app.listen(env.PORT, () => {
+const server = app.listen(env.PORT, '0.0.0.0', () => {
   console.log(`🚀 DesignDNA Backend running at http://localhost:${env.PORT}`);
   console.log(`📡 Environment: ${env.NODE_ENV}`);
   console.log(`🩺 Health check: http://localhost:${env.PORT}/api/health`);

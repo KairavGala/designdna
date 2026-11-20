@@ -1,10 +1,87 @@
 @import "tailwindcss";
 
+@theme {
+  /* Core dark-theme surfaces */
+  --color-canvas: #070B0D;
+  --color-sidebar: #0B1215;
+  --color-surface: #0E171A;
+  --color-elevated: #111D21;
+  --color-subtle: #111D21;
+
+  /* Dark teal-grey borders */
+  --color-border: #1A2B30;
+  --color-border-strong: #273F47;
+
+  /* Typography hierarchy */
+  --color-ink: #E8F0F0;
+  --color-muted: #91A2A5;
+  --color-faint: #607477;
+
+  /* Restrained turquoise / cyan accents */
+  --color-accent: #16D6C5;
+  --color-accent-hover: #2EE5D5;
+  --color-accent-secondary: #00A6B2;
+  --color-accent-soft: rgba(22, 214, 197, 0.1);
+  --color-accent-border: rgba(22, 214, 197, 0.28);
+
+  /* Dark-calibrated semantic states */
+  --color-success: #34D399;
+  --color-warning: #FBBF24;
+  --color-danger: #F87171;
+
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
 @layer base {
-  body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  html {
+    color-scheme: dark;
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
-  code, pre {
-    font-family: 'JetBrains Mono', monospace;
+
+  body {
+    margin: 0;
+    background-color: var(--color-canvas);
+    background-image: radial-gradient(
+      ellipse 70% 34% at 55% -6%,
+      rgba(22, 214, 197, 0.065),
+      transparent 72%
+    );
+    background-attachment: fixed;
+    color: var(--color-ink);
+    letter-spacing: 0.005em;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  code,
+  pre,
+  kbd {
+    font-family: var(--font-mono);
+  }
+
+  button:focus-visible,
+  a:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #22353B #0B1215;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

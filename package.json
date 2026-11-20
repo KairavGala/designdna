@@ -8,12 +8,16 @@
     "server"
   ],
   "scripts": {
-    "dev": "concurrently -n server,client -c blue,magenta \"npm run dev -w server\" \"npm run dev -w client\"",
-    "build": "npm run build -w client && npm run build -w server",
+    "dev": "concurrently -n server,client -c blue,magenta \"PORT=${API_PORT:-5000} npm run dev -w @designdna/server\" \"npm run dev -w @designdna/client\"",
+    "build": "npm run build -w @designdna/client && npm run build -w @designdna/server",
     "start": "node server/dist/index.js",
-    "type-check": "npm run type-check -w client && npm run type-check -w server"
+    "type-check": "npm run type-check -w @designdna/client && npm run type-check -w @designdna/server",
+    "lint": "npm run type-check"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
+  },
+  "dependencies": {
+    "@google/genai": "^3.6.1"
   }
 }
