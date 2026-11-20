@@ -1,0 +1,19 @@
+{
+  "name": "designdna",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,magenta \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w client && npm run build -w server",
+    "start": "node server/dist/index.js",
+    "type-check": "npm run type-check -w client && npm run type-check -w server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
