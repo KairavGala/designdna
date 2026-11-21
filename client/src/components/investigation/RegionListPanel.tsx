@@ -67,7 +67,7 @@ export const RegionListPanel: React.FC<RegionListPanelProps> = ({
           type="button"
           onClick={onToggleAnnotations}
           aria-pressed={showAnnotations}
-          title={showAnnotations ? 'Hide annotation overlays' : 'Show annotation overlays'}
+          title={showAnnotations ? 'Hide region overlays' : 'Show region overlays'}
           className={[
             'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer shrink-0',
             showAnnotations
@@ -80,7 +80,7 @@ export const RegionListPanel: React.FC<RegionListPanelProps> = ({
           ) : (
             <EyeOff className="w-3.5 h-3.5" aria-hidden="true" />
           )}
-          <span>{showAnnotations ? 'Overlays On' : 'Overlays Off'}</span>
+          <span>{showAnnotations ? 'Regions On' : 'Regions Off'}</span>
         </button>
       </div>
 

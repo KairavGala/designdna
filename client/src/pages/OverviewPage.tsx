@@ -5,6 +5,7 @@ import {
   History,
   ImageUp,
   Layers,
+  LayoutDashboard,
   Loader2,
   Palette,
   ScanLine,
@@ -352,14 +353,24 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({
         action={
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             {dashboard.stage === 'complete' && (
-              <SecondaryButton
-                size="sm"
-                onClick={() => onNavigate('visual-investigation')}
-                className="w-full sm:w-auto"
-              >
-                <ScanSearch className="w-4 h-4 text-accent" aria-hidden="true" />
-                <span>Visual Investigation</span>
-              </SecondaryButton>
+              <>
+                <SecondaryButton
+                  size="sm"
+                  onClick={() => onNavigate('design-anatomy')}
+                  className="w-full sm:w-auto whitespace-nowrap"
+                >
+                  <LayoutDashboard className="w-4 h-4 text-accent" aria-hidden="true" />
+                  <span>Design Anatomy</span>
+                </SecondaryButton>
+                <SecondaryButton
+                  size="sm"
+                  onClick={() => onNavigate('visual-investigation')}
+                  className="w-full sm:w-auto whitespace-nowrap"
+                >
+                  <ScanSearch className="w-4 h-4 text-accent" aria-hidden="true" />
+                  <span>Visual Investigation</span>
+                </SecondaryButton>
+              </>
             )}
             <SecondaryButton
               size="sm"

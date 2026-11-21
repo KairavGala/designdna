@@ -140,6 +140,75 @@ export const visualRegionSchema = rawVisualRegionSchema.extend({
   id: z.string().min(1)
 });
 
+export const visualElementCategorySchema = z.enum([
+  'geometric-motif',
+  'background-texture',
+  'icon-symbol',
+  'component-style',
+  'decorative-detail'
+]);
+
+export const visualElementCharacteristicsSchema = z.object({
+  geometry: z.string().min(1).max(240),
+  surfaceAndColor: z.string().min(1).max(240),
+  styleTraits: z.array(z.string().min(1).max(80)).min(1).max(6),
+  visualRole: z.string().min(1).max(280)
+});
+
+export const rawVisualElementSchema = z.object({
+  name: z.string().min(1).max(160),
+  category: visualElementCategorySchema,
+  subcategory: z.string().min(1).max(100),
+  description: z.string().min(1).max(600),
+  boundingBox: normalizedBoundingBoxSchema,
+  additionalLocations: z.array(normalizedBoundingBoxSchema).max(6).default([]),
+  boundaryPrecision: z.enum(['precise', 'approximate']).default('approximate'),
+  repetitionStatus: z.enum(['recurring', 'individual']).default('individual'),
+  surfaceBasis: z
+    .enum(['directly-visible-surface', 'inferred-visual-effect'])
+    .default('inferred-visual-effect'),
+  characteristics: visualElementCharacteristicsSchema,
+  confidence: confidenceLevelSchema,
+  evidence: z.array(z.string().min(1)).min(1).max(6)
+});
+
+export const visualElementSchema = rawVisualElementSchema.extend({
+  id: z.string().min(1),
+  parentRegionId: z.string().min(1).nullable(),
+  parentRegionName: z.string().min(1).nullable(),
+  relatedRegionIds: z.array(z.string().min(1)).default([]),
+  occurrenceCount: z.number().int().min(1)
+});
+
+export const patternRelationshipTypeSchema = z.enum([
+  'repeated-motif',
+  'shared-component-language',
+  'recurring-background',
+  'structural-rhythm'
+]);
+
+export const rawPatternRelationshipSchema = z.object({
+  name: z.string().min(1).max(160),
+  patternType: patternRelationshipTypeSchema,
+  description: z.string().min(1).max(600),
+  elementNames: z.array(z.string().min(1)).min(1).max(8),
+  occurrenceCount: z.number().int().min(2).max(20),
+  confidence: confidenceLevelSchema,
+  evidence: z.array(z.string().min(1)).min(1).max(6)
+});
+
+export const patternRelationshipSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1).max(160),
+  patternType: patternRelationshipTypeSchema,
+  description: z.string().min(1).max(600),
+  elementIds: z.array(z.string().min(1)).min(1),
+  regionIds: z.array(z.string().min(1)).default([]),
+  occurrenceCount: z.number().int().min(2),
+  confidence: confidenceLevelSchema,
+  evidence: z.array(z.string().min(1)).min(1).max(6)
+});
+
 export const visualInterpretationSchema = z.object({
   summary: z.object({
     styleSummary: z.string().min(1),
@@ -182,11 +251,17 @@ export const visualInterpretationSchema = z.object({
     notes: z.string().min(1),
     confidence: confidenceLevelSchema
   }),
-  visualRegions: z.array(visualRegionSchema).max(14).default([])
+  visualRegions: z.array(visualRegionSchema).max(14).default([]),
+  visualElements: z.array(visualElementSchema).max(18).default([]),
+  patternRelationships: z.array(patternRelationshipSchema).max(10).default([])
 });
 
 export type VisualAnalysisRequest = z.infer<typeof visualAnalysisRequestSchema>;
 export type VisualRegionCategory = z.infer<typeof visualRegionCategorySchema>;
 export type NormalizedBoundingBox = z.infer<typeof normalizedBoundingBoxSchema>;
 export type VisualRegion = z.infer<typeof visualRegionSchema>;
+export type VisualElementCategory = z.infer<typeof visualElementCategorySchema>;
+export type VisualElement = z.infer<typeof visualElementSchema>;
+export type PatternRelationshipType = z.infer<typeof patternRelationshipTypeSchema>;
+export type PatternRelationship = z.infer<typeof patternRelationshipSchema>;
 export type VisualInterpretation = z.infer<typeof visualInterpretationSchema>;

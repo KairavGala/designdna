@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ArrowUpRight,
   Check,
   Copy,
   Crosshair,
@@ -9,8 +10,10 @@ import {
 } from 'lucide-react';
 import { normalizedBoxToPixels } from '../../services/investigation/regionSchema';
 import {
+  ELEMENT_CATEGORY_SHORT_LABELS,
   REGION_CATEGORY_LABELS,
   type RegionMeasuredColor,
+  type VisualElement,
   type VisualRegion
 } from '../../types/investigation';
 import type { UploadedImage } from '../../types/upload';
@@ -19,10 +22,12 @@ export interface RegionInspectorPanelProps {
   image: UploadedImage;
   region: VisualRegion | null;
   regionColors: readonly RegionMeasuredColor[] | undefined;
+  childElements?: readonly VisualElement[];
   samplingColors: boolean;
   totalRegions: number;
   aiModel: string | null;
   onZoomToRegion: (region: VisualRegion) => void;
+  onSelectElement?: (elementId: string) => void;
   onReturnFullScreenshot: () => void;
 }
 
@@ -62,10 +67,12 @@ export const RegionInspectorPanel: React.FC<RegionInspectorPanelProps> = ({
   image,
   region,
   regionColors,
+  childElements = [],
   samplingColors,
   totalRegions,
   aiModel,
   onZoomToRegion,
+  onSelectElement,
   onReturnFullScreenshot
 }) => {
   const [copiedHex, setCopiedHex] = useState<string | null>(null);
@@ -313,6 +320,37 @@ export const RegionInspectorPanel: React.FC<RegionInspectorPanelProps> = ({
             )}
           </dl>
         </div>
+
+        {/* Section 2C: M9 Visual Elements detected inside this region */}
+        {childElements.length > 0 && onSelectElement && (
+          <div className="px-4 py-3.5 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-xs font-semibold text-ink">Elements in This Region</h3>
+              <span className="text-[11px] font-mono text-muted tabular-nums">
+                {childElements.length}
+              </span>
+            </div>
+            <div className="space-y-1">
+              {childElements.map((el) => (
+                <button
+                  key={el.id}
+                  type="button"
+                  onClick={() => onSelectElement(el.id)}
+                  className="w-full flex items-center justify-between gap-2 px-2 py-1.5 -mx-2 rounded-lg hover:bg-elevated/80 transition-colors cursor-pointer text-left"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-ink truncate">{el.name}</p>
+                    <p className="text-[11px] text-muted truncate">
+                      {ELEMENT_CATEGORY_SHORT_LABELS[el.category]}
+                      {el.repetitionStatus === 'recurring' ? ` · ${el.occurrenceCount}×` : ''}
+                    </p>
+                  </div>
+                  <ArrowUpRight className="w-3.5 h-3.5 text-accent shrink-0" aria-hidden="true" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Section 3: Design Interpretation & Supporting Evidence */}
         <div className="px-4 py-3.5 space-y-3">

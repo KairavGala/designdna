@@ -1,4 +1,4 @@
-import type { VisualRegion } from './investigation';
+import type { PatternRelationship, VisualElement, VisualRegion } from './investigation';
 
 export type ConfidenceLevel = 'high' | 'medium' | 'low';
 
@@ -110,6 +110,8 @@ export interface VisualInterpretation {
     confidence: ConfidenceLevel;
   };
   visualRegions?: VisualRegion[];
+  visualElements?: VisualElement[];
+  patternRelationships?: PatternRelationship[];
 }
 
 export interface VisualAnalysisMeta {

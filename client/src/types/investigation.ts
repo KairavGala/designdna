@@ -98,3 +98,136 @@ export const REGION_CATEGORY_SHORT_LABELS: Record<VisualRegionCategory, string> 
   footer: 'Footer',
   decorative: 'Decorative'
 };
+
+// ────────────────────────────────────────────────────────────────────────────
+// M9: Patterns, Motifs, Backgrounds, Icons, Component Styles & Decorative Details
+// ────────────────────────────────────────────────────────────────────────────
+
+export type VisualElementCategory =
+  | 'geometric-motif'
+  | 'background-texture'
+  | 'icon-symbol'
+  | 'component-style'
+  | 'decorative-detail';
+
+export type RepetitionStatus = 'recurring' | 'individual';
+export type SurfaceBasis = 'directly-visible-surface' | 'inferred-visual-effect';
+
+export interface VisualElementCharacteristics {
+  geometry: string;
+  surfaceAndColor: string;
+  styleTraits: string[];
+  visualRole: string;
+}
+
+export interface VisualElement {
+  id: string;
+  name: string;
+  category: VisualElementCategory;
+  subcategory: string;
+  description: string;
+  boundingBox: NormalizedBoundingBox;
+  additionalLocations: NormalizedBoundingBox[];
+  boundaryPrecision: BoundaryPrecision;
+  repetitionStatus: RepetitionStatus;
+  surfaceBasis: SurfaceBasis;
+  characteristics: VisualElementCharacteristics;
+  confidence: ConfidenceLevel;
+  evidence: string[];
+  parentRegionId: string | null;
+  parentRegionName: string | null;
+  relatedRegionIds: string[];
+  occurrenceCount: number;
+}
+
+export type PatternRelationshipType =
+  | 'repeated-motif'
+  | 'shared-component-language'
+  | 'recurring-background'
+  | 'structural-rhythm';
+
+export interface PatternRelationship {
+  id: string;
+  name: string;
+  patternType: PatternRelationshipType;
+  description: string;
+  elementIds: string[];
+  regionIds: string[];
+  occurrenceCount: number;
+  confidence: ConfidenceLevel;
+  evidence: string[];
+}
+
+export type ExplorerTabId =
+  | 'all'
+  | 'patterns'
+  | 'geometric-motif'
+  | 'background-texture'
+  | 'icon-symbol'
+  | 'component-style'
+  | 'decorative-detail';
+
+export type InvestigationSelection =
+  | { kind: 'region'; id: string }
+  | { kind: 'element'; id: string }
+  | { kind: 'pattern'; id: string }
+  | null;
+
+export interface ElementVisualAssets {
+  primaryCropUrl: string | null;
+  occurrenceCropUrls: string[];
+  measuredColors: RegionMeasuredColor[];
+}
+
+export interface InvestigationAssets {
+  regionColors: Record<string, RegionMeasuredColor[]>;
+  elementAssets: Record<string, ElementVisualAssets>;
+}
+
+export interface OverlayVisibility {
+  regions: boolean;
+  patternsAndMotifs: boolean;
+  components: boolean;
+}
+
+export interface ElementsAndPatternsValidationSummary {
+  elements: VisualElement[];
+  patterns: PatternRelationship[];
+  rejectedElementCount: number;
+  rejectedPatternCount: number;
+}
+
+export const ELEMENT_CATEGORY_ORDER: readonly VisualElementCategory[] = [
+  'geometric-motif',
+  'background-texture',
+  'icon-symbol',
+  'component-style',
+  'decorative-detail'
+];
+
+export const ELEMENT_CATEGORY_LABELS: Record<VisualElementCategory, string> = {
+  'geometric-motif': 'Geometric Motifs',
+  'background-texture': 'Backgrounds & Textures',
+  'icon-symbol': 'Icons & Symbols',
+  'component-style': 'Component Styles',
+  'decorative-detail': 'Decorative Details'
+};
+
+export const ELEMENT_CATEGORY_SHORT_LABELS: Record<VisualElementCategory, string> = {
+  'geometric-motif': 'Geometric Motif',
+  'background-texture': 'Background / Texture',
+  'icon-symbol': 'Icon / Symbol',
+  'component-style': 'Component Style',
+  'decorative-detail': 'Decorative Detail'
+};
+
+export const PATTERN_TYPE_LABELS: Record<PatternRelationshipType, string> = {
+  'repeated-motif': 'Repeated Motif',
+  'shared-component-language': 'Shared Component Style',
+  'recurring-background': 'Recurring Surface / Backdrop',
+  'structural-rhythm': 'Structural Grid Rhythm'
+};
+
+export function isComponentElement(element: VisualElement): boolean {
+  return element.category === 'component-style';
+}

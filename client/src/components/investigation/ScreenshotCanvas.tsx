@@ -1,7 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Eye,
-  EyeOff,
   Focus,
   Maximize2,
   Move,
@@ -10,22 +8,40 @@ import {
   ZoomOut
 } from 'lucide-react';
 import {
+  ELEMENT_CATEGORY_SHORT_LABELS,
+  isComponentElement,
   REGION_CATEGORY_SHORT_LABELS,
+  type InvestigationSelection,
+  type NormalizedBoundingBox,
+  type OverlayVisibility,
+  type PatternRelationship,
+  type VisualElement,
   type VisualRegion
 } from '../../types/investigation';
 import type { UploadedImage } from '../../types/upload';
 
+export interface ZoomTargetRequest {
+  box: NormalizedBoundingBox;
+  label: string;
+  seq: number;
+}
+
 export interface ScreenshotCanvasProps {
   image: UploadedImage;
   regions: readonly VisualRegion[];
-  selectedRegionId: string | null;
+  elements: readonly VisualElement[];
+  patterns: readonly PatternRelationship[];
+  selection: InvestigationSelection;
   hoveredRegionId: string | null;
-  showAnnotations: boolean;
-  zoomTargetRequest: { region: VisualRegion; seq: number } | null;
+  hoveredElementId: string | null;
+  overlayVisibility: OverlayVisibility;
+  zoomTargetRequest: ZoomTargetRequest | null;
   resetViewSeq: number;
   onSelectRegion: (regionId: string | null) => void;
+  onSelectElement: (elementId: string) => void;
   onHoverRegion: (regionId: string | null) => void;
-  onToggleAnnotations: () => void;
+  onHoverElement: (elementId: string | null) => void;
+  onToggleOverlayLayer: (layer: keyof OverlayVisibility) => void;
   onReturnFullScreenshot: () => void;
 }
 
@@ -40,14 +56,19 @@ function clamp(value: number, min: number, max: number): number {
 export const ScreenshotCanvas: React.FC<ScreenshotCanvasProps> = ({
   image,
   regions,
-  selectedRegionId,
+  elements,
+  patterns,
+  selection,
   hoveredRegionId,
-  showAnnotations,
+  hoveredElementId,
+  overlayVisibility,
   zoomTargetRequest,
   resetViewSeq,
   onSelectRegion,
+  onSelectElement,
   onHoverRegion,
-  onToggleAnnotations,
+  onHoverElement,
+  onToggleOverlayLayer,
   onReturnFullScreenshot
 }) => {
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -75,7 +96,65 @@ export const ScreenshotCanvas: React.FC<ScreenshotCanvasProps> = ({
     moved: false
   });
 
-  const selectedRegion = regions.find((r) => r.id === selectedRegionId) ?? null;
+  const selectedRegionId = selection?.kind === 'region' ? selection.id : null;
+  const selectedElementId = selection?.kind === 'element' ? selection.id : null;
+  const selectedPatternId = selection?.kind === 'pattern' ? selection.id : null;
+
+  const selectedRegion = useMemo(
+    () => (selectedRegionId ? regions.find((r) => r.id === selectedRegionId) ?? null : null),
+    [regions, selectedRegionId]
+  );
+
+  const selectedElement = useMemo(
+    () => (selectedElementId ? elements.find((e) => e.id === selectedElementId) ?? null : null),
+    [elements, selectedElementId]
+  );
+
+  const selectedPattern = useMemo(
+    () => (selectedPatternId ? patterns.find((p) => p.id === selectedPatternId) ?? null : null),
+    [patterns, selectedPatternId]
+  );
+
+  const activePatternElementIds = useMemo(() => {
+    if (!selectedPattern) return new Set<string>();
+    return new Set(selectedPattern.elementIds);
+  }, [selectedPattern]);
+
+  const motifElements = useMemo(
+    () => elements.filter((el) => !isComponentElement(el)),
+    [elements]
+  );
+
+  const componentElements = useMemo(
+    () => elements.filter((el) => isComponentElement(el)),
+    [elements]
+  );
+
+  const visibleElements = useMemo(
+    () =>
+      elements.filter((el) =>
+        isComponentElement(el)
+          ? overlayVisibility.components
+          : overlayVisibility.patternsAndMotifs
+      ),
+    [elements, overlayVisibility.components, overlayVisibility.patternsAndMotifs]
+  );
+
+  const activeFocusTarget = useMemo<{ box: NormalizedBoundingBox; label: string } | null>(() => {
+    if (selectedRegion) {
+      return { box: selectedRegion.boundingBox, label: selectedRegion.name };
+    }
+    if (selectedElement) {
+      return { box: selectedElement.boundingBox, label: selectedElement.name };
+    }
+    if (selectedPattern) {
+      const firstMember = elements.find((e) => selectedPattern.elementIds.includes(e.id));
+      if (firstMember) {
+        return { box: firstMember.boundingBox, label: selectedPattern.name };
+      }
+    }
+    return null;
+  }, [selectedRegion, selectedElement, selectedPattern, elements]);
 
   const resetView = useCallback(() => {
     setZoom(1);
@@ -87,7 +166,7 @@ export const ScreenshotCanvas: React.FC<ScreenshotCanvasProps> = ({
     resetView();
   }, [image.previewUrl, resetViewSeq, resetView]);
 
-  const zoomToRegion = useCallback((region: VisualRegion) => {
+  const zoomToBox = useCallback((box: NormalizedBoundingBox) => {
     const frameEl = frameRef.current;
     const viewportEl = viewportRef.current;
     if (!frameEl || !viewportEl) {
@@ -104,18 +183,13 @@ export const ScreenshotCanvas: React.FC<ScreenshotCanvasProps> = ({
       return;
     }
 
-    const box = region.boundingBox;
-    // Choose a comfortable magnification that fills ~68% of the frame along the limiting axis
-    const desiredScale = Math.min(0.72 / box.width, 0.72 / box.height);
-    const nextZoom = clamp(Math.round(desiredScale * 20) / 20, 1.35, 3.0);
+    // Choose a comfortable magnification that fills ~70% of the frame along the limiting axis
+    const desiredScale = Math.min(0.7 / Math.max(box.width, 0.04), 0.7 / Math.max(box.height, 0.04));
+    const nextZoom = clamp(Math.round(desiredScale * 20) / 20, 1.35, 3.25);
 
-    // Region centre offset from image centre in unscaled pixels
     const centerOffsetX = (box.x + box.width / 2 - 0.5) * baseWidth;
     const centerOffsetY = (box.y + box.height / 2 - 0.5) * baseHeight;
 
-    // With transform: translate(panX, panY) scale(zoom) and transform-origin: center,
-    // screen position of (cx, cy) is (panX + cx * zoom, panY + cy * zoom).
-    // Setting pan = -centerOffset * nextZoom centres the region accurately.
     const maxPanX = (baseWidth * nextZoom) / 2;
     const maxPanY = (baseHeight * nextZoom) / 2;
 
@@ -128,9 +202,9 @@ export const ScreenshotCanvas: React.FC<ScreenshotCanvasProps> = ({
 
   useEffect(() => {
     if (zoomTargetRequest) {
-      zoomToRegion(zoomTargetRequest.region);
+      zoomToBox(zoomTargetRequest.box);
     }
-  }, [zoomTargetRequest, zoomToRegion]);
+  }, [zoomTargetRequest, zoomToBox]);
 
   const handleZoomIn = () => {
     setZoom((prev) => clamp(Math.round((prev + ZOOM_STEP) * 100) / 100, MIN_ZOOM, MAX_ZOOM));
@@ -147,11 +221,13 @@ export const ScreenshotCanvas: React.FC<ScreenshotCanvasProps> = ({
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    // Do not hijack button clicks inside the annotation overlay unless dragging
     if (zoom <= 1) return;
     if (e.button !== 0) return;
     const target = e.target as HTMLElement | null;
-    if (target?.closest('button[data-region-box="true"]')) {
+    if (
+      target?.closest('button[data-region-box="true"]') ||
+      target?.closest('button[data-element-box="true"]')
+    ) {
       return;
     }
 
@@ -203,7 +279,10 @@ export const ScreenshotCanvas: React.FC<ScreenshotCanvasProps> = ({
       return;
     }
     const target = e.target as HTMLElement | null;
-    if (!target?.closest('button[data-region-box="true"]')) {
+    if (
+      !target?.closest('button[data-region-box="true"]') &&
+      !target?.closest('button[data-element-box="true"]')
+    ) {
       onSelectRegion(null);
     }
   };
@@ -221,6 +300,10 @@ export const ScreenshotCanvas: React.FC<ScreenshotCanvasProps> = ({
 
   const zoomPercent = Math.round(zoom * 100);
   const isModifiedView = zoom !== 1 || pan.x !== 0 || pan.y !== 0;
+  const hasAnySelection = selection !== null;
+
+  const activeRegionCount = overlayVisibility.regions ? regions.length : 0;
+  const activeElementCount = visibleElements.length;
 
   return (
     <section
@@ -246,7 +329,7 @@ export const ScreenshotCanvas: React.FC<ScreenshotCanvasProps> = ({
           )}
         </div>
 
-        {/* Right: Zoom, Fit, Focus, Reset & Overlay Toggle */}
+        {/* Right: Zoom, Fit, Focus & Reset */}
         <div className="flex flex-wrap items-center gap-1.5">
           <div
             className="inline-flex items-center rounded-lg border border-border bg-canvas overflow-hidden"
@@ -298,52 +381,116 @@ export const ScreenshotCanvas: React.FC<ScreenshotCanvasProps> = ({
               resetView();
               onReturnFullScreenshot();
             }}
-            disabled={!isModifiedView && !selectedRegionId}
+            disabled={!isModifiedView && !hasAnySelection}
             aria-label="Reset zoom and return to full screenshot"
-            title="Reset zoom and clear region selection"
+            title="Reset zoom and clear selection"
             className="inline-flex items-center gap-1 h-7 px-2 rounded-lg border border-border bg-canvas text-[11px] font-medium text-muted hover:text-ink hover:border-border-strong disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
           >
             <RotateCcw className="w-3 h-3" aria-hidden="true" />
             <span className="hidden sm:inline">Reset</span>
           </button>
 
-          {selectedRegion && (
+          {activeFocusTarget && (
             <button
               type="button"
-              onClick={() => zoomToRegion(selectedRegion)}
-              aria-label={`Zoom into selected region ${selectedRegion.name}`}
-              title="Zoom into selected region"
-              className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg border border-accent-border bg-accent-soft text-[11px] font-medium text-accent hover:bg-accent/20 transition-colors cursor-pointer"
+              onClick={() => zoomToBox(activeFocusTarget.box)}
+              aria-label={`Zoom into ${activeFocusTarget.label}`}
+              title={`Zoom into ${activeFocusTarget.label}`}
+              className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg border border-accent-border bg-accent-soft text-[11px] font-medium text-accent hover:bg-accent/20 transition-colors cursor-pointer whitespace-nowrap"
             >
               <Focus className="w-3 h-3" aria-hidden="true" />
-              <span>Focus Region</span>
+              <span>Focus</span>
             </button>
           )}
-
-          <button
-            type="button"
-            onClick={onToggleAnnotations}
-            aria-pressed={showAnnotations}
-            aria-label={showAnnotations ? 'Hide annotations' : 'Show annotations'}
-            title={showAnnotations ? 'Hide annotations' : 'Show annotations'}
-            className={[
-              'inline-flex items-center gap-1 h-7 px-2 rounded-lg border text-[11px] font-medium transition-colors cursor-pointer',
-              showAnnotations
-                ? 'bg-accent-soft border-accent-border text-accent'
-                : 'bg-canvas border-border text-muted hover:text-ink hover:border-border-strong'
-            ].join(' ')}
-          >
-            {showAnnotations ? (
-              <Eye className="w-3 h-3" aria-hidden="true" />
-            ) : (
-              <EyeOff className="w-3 h-3" aria-hidden="true" />
-            )}
-            <span className="hidden sm:inline">
-              {showAnnotations ? 'Annotations' : 'Hidden'}
-            </span>
-          </button>
         </div>
       </div>
+
+      {/* Independent Overlay Layer Controls */}
+      {(regions.length > 0 || elements.length > 0) && (
+        <div
+          className="px-3.5 py-2 border-b border-border bg-canvas/60 flex flex-wrap items-center justify-between gap-2"
+          role="group"
+          aria-label="Annotation overlay layer visibility"
+        >
+          <span className="text-[11px] font-medium text-faint">Overlay Layers</span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => onToggleOverlayLayer('regions')}
+              aria-pressed={overlayVisibility.regions}
+              aria-label="Toggle region annotations"
+              className={[
+                'inline-flex items-center gap-1.5 h-6 px-2 rounded-md border text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap',
+                overlayVisibility.regions
+                  ? 'border-accent-border bg-accent-soft text-accent'
+                  : 'border-border bg-surface text-muted hover:text-ink hover:border-border-strong'
+              ].join(' ')}
+            >
+              <span
+                className={[
+                  'w-1.5 h-1.5 rounded-full',
+                  overlayVisibility.regions ? 'bg-accent' : 'bg-faint'
+                ].join(' ')}
+                aria-hidden="true"
+              />
+              <span>Regions</span>
+              <span className="font-mono text-[10px] opacity-80 tabular-nums">
+                {regions.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onToggleOverlayLayer('patternsAndMotifs')}
+              aria-pressed={overlayVisibility.patternsAndMotifs}
+              aria-label="Toggle pattern and motif annotations"
+              className={[
+                'inline-flex items-center gap-1.5 h-6 px-2 rounded-md border text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap',
+                overlayVisibility.patternsAndMotifs
+                  ? 'border-[#F59E0B]/45 bg-[#F59E0B]/12 text-[#FBBF24]'
+                  : 'border-border bg-surface text-muted hover:text-ink hover:border-border-strong'
+              ].join(' ')}
+            >
+              <span
+                className={[
+                  'w-1.5 h-1.5 rounded-full',
+                  overlayVisibility.patternsAndMotifs ? 'bg-[#F59E0B]' : 'bg-faint'
+                ].join(' ')}
+                aria-hidden="true"
+              />
+              <span>Motifs &amp; Surfaces</span>
+              <span className="font-mono text-[10px] opacity-80 tabular-nums">
+                {motifElements.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onToggleOverlayLayer('components')}
+              aria-pressed={overlayVisibility.components}
+              aria-label="Toggle component annotations"
+              className={[
+                'inline-flex items-center gap-1.5 h-6 px-2 rounded-md border text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap',
+                overlayVisibility.components
+                  ? 'border-[#38BDF8]/45 bg-[#38BDF8]/12 text-[#7DD3FC]'
+                  : 'border-border bg-surface text-muted hover:text-ink hover:border-border-strong'
+              ].join(' ')}
+            >
+              <span
+                className={[
+                  'w-1.5 h-1.5 rounded-full',
+                  overlayVisibility.components ? 'bg-[#38BDF8]' : 'bg-faint'
+                ].join(' ')}
+                aria-hidden="true"
+              />
+              <span>Components</span>
+              <span className="font-mono text-[10px] opacity-80 tabular-nums">
+                {componentElements.length}
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Interactive Screenshot Stage */}
       <div
@@ -355,7 +502,7 @@ export const ScreenshotCanvas: React.FC<ScreenshotCanvasProps> = ({
         onClick={handleStageClick}
         onWheel={handleWheel}
         className={[
-          'relative flex-1 min-h-[360px] sm:min-h-[480px] xl:min-h-[600px] bg-canvas overflow-hidden flex items-center justify-center p-4 sm:p-6 select-none',
+          'relative flex-1 min-h-[360px] sm:min-h-[480px] xl:min-h-[560px] bg-canvas overflow-hidden flex items-center justify-center p-4 sm:p-6 select-none',
           zoom > 1 ? (isPanning ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default'
         ].join(' ')}
         style={{
@@ -375,13 +522,13 @@ export const ScreenshotCanvas: React.FC<ScreenshotCanvasProps> = ({
             transformOrigin: 'center center'
           }}
         >
-          {/* Tightly fitted aspect-ratio container: Guarantees exact 1:1 coordinate alignment between <img> and overlay layer */}
+          {/* Tightly fitted aspect-ratio container: Guarantees exact 1:1 coordinate alignment */}
           <div
             ref={frameRef}
             className="relative inline-block max-w-full rounded-md shadow-[0_20px_50px_rgba(0,0,0,0.65)] ring-1 ring-border-strong/70 overflow-hidden bg-[#05080A]"
             style={{
               aspectRatio: `${image.width} / ${image.height}`,
-              maxHeight: '540px'
+              maxHeight: '520px'
             }}
           >
             <img
@@ -391,21 +538,18 @@ export const ScreenshotCanvas: React.FC<ScreenshotCanvasProps> = ({
               className="block w-full h-full object-fill select-none pointer-events-none"
             />
 
-            {/* Normalized [0, 1] Interactive Annotation Overlay */}
-            {showAnnotations && regions.length > 0 && (
+            {/* Layer 1: M8 Visual Regions Overlay (Turquoise) */}
+            {overlayVisibility.regions && regions.length > 0 && (
               <div
-                className="absolute inset-0"
+                className="absolute inset-0 pointer-events-none"
                 role="group"
                 aria-label="Annotated visual regions overlay"
               >
                 {regions.map((region) => {
                   const isSelected = selectedRegionId === region.id;
                   const isHovered = hoveredRegionId === region.id;
-                  const hasActiveSelection = Boolean(selectedRegionId);
                   const isApproximate = region.boundaryPrecision === 'approximate';
                   const { x, y, width, height } = region.boundingBox;
-
-                  // Place floating label inside bottom if region touches very top edge
                   const labelInside = y < 0.06;
 
                   return (
@@ -431,21 +575,21 @@ export const ScreenshotCanvas: React.FC<ScreenshotCanvasProps> = ({
                         height: `${height * 100}%`
                       }}
                       className={[
-                        'absolute rounded-[4px] transition-all duration-150 cursor-pointer focus-visible:outline-2 focus-visible:outline-accent',
+                        'pointer-events-auto absolute rounded-[4px] transition-all duration-150 cursor-pointer focus-visible:outline-2 focus-visible:outline-accent',
                         isApproximate ? 'border-dashed' : 'border-solid',
                         isSelected
                           ? 'z-30 border-[1.5px] border-accent bg-accent/[0.13] shadow-[0_0_0_1px_rgba(22,214,197,0.7),0_0_24px_rgba(22,214,197,0.22)]'
                           : isHovered
                             ? 'z-20 border-[1.5px] border-accent bg-accent/[0.1] shadow-[0_0_14px_rgba(22,214,197,0.16)]'
-                            : hasActiveSelection
-                              ? 'z-10 border border-accent/40 bg-accent/[0.02] opacity-60 hover:opacity-100'
-                              : 'z-10 border border-accent/65 bg-accent/[0.05] hover:bg-accent/[0.1]'
+                            : hasAnySelection
+                              ? 'z-10 border border-accent/35 bg-accent/[0.015] opacity-45 hover:opacity-100'
+                              : 'z-10 border border-accent/60 bg-accent/[0.04] hover:bg-accent/[0.09]'
                       ].join(' ')}
                     >
                       {(isSelected || isHovered) && (
                         <span
                           className={[
-                            'pointer-events-none absolute left-0 max-w-[220px] truncate px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold leading-tight shadow-md whitespace-nowrap',
+                            'pointer-events-none absolute max-w-[220px] truncate px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold leading-tight shadow-md whitespace-nowrap',
                             labelInside ? 'top-1 left-1' : '-top-5 left-0',
                             isSelected
                               ? 'bg-accent text-[#051315]'
@@ -460,6 +604,113 @@ export const ScreenshotCanvas: React.FC<ScreenshotCanvasProps> = ({
                 })}
               </div>
             )}
+
+            {/* Layer 2 & 3: M9 Motifs/Surfaces (Amber Dashed) & Component Styles (Sky Solid) */}
+            {visibleElements.length > 0 && (
+              <div
+                className="absolute inset-0 pointer-events-none"
+                role="group"
+                aria-label="Detected visual motifs and component overlays"
+              >
+                {visibleElements.map((element) => {
+                  const isComp = isComponentElement(element);
+                  const isDirectlySelected = selectedElementId === element.id;
+                  const isPatternMember = activePatternElementIds.has(element.id);
+                  const isActive = isDirectlySelected || isPatternMember;
+                  const isHovered = hoveredElementId === element.id;
+
+                  // Show additional repeated locations when this element or its pattern is active/hovered
+                  const boxesToRender: NormalizedBoundingBox[] =
+                    isActive || isHovered
+                      ? [element.boundingBox, ...element.additionalLocations]
+                      : [element.boundingBox];
+
+                  const showOccurrenceIndex =
+                    (isActive || isHovered) && element.additionalLocations.length > 0;
+
+                  const layerName = isComp ? 'components' : 'patterns-motifs';
+
+                  return (
+                    <React.Fragment key={element.id}>
+                      {boxesToRender.map((box, boxIndex) => {
+                        const labelInside = box.y < 0.06;
+                        const isPrimaryBox = boxIndex === 0;
+
+                        const activeClasses = isComp
+                          ? 'z-40 border-[1.5px] border-[#38BDF8] bg-[#38BDF8]/[0.15] shadow-[0_0_0_1px_rgba(56,189,248,0.65),0_0_20px_rgba(56,189,248,0.2)]'
+                          : 'z-40 border-[1.5px] border-[#F59E0B] bg-[#F59E0B]/[0.15] shadow-[0_0_0_1px_rgba(245,158,11,0.65),0_0_20px_rgba(245,158,11,0.2)]';
+
+                        const hoverClasses = isComp
+                          ? 'z-30 border-[1.5px] border-[#38BDF8] bg-[#38BDF8]/[0.11]'
+                          : 'z-30 border-[1.5px] border-[#F59E0B] bg-[#F59E0B]/[0.11]';
+
+                        const idleClasses = hasAnySelection
+                          ? isComp
+                            ? 'z-20 border border-[#38BDF8]/35 bg-[#38BDF8]/[0.015] opacity-40 hover:opacity-100'
+                            : 'z-20 border border-[#F59E0B]/35 bg-[#F59E0B]/[0.015] opacity-40 hover:opacity-100'
+                          : isComp
+                            ? 'z-20 border border-[#38BDF8]/65 bg-[#38BDF8]/[0.04] hover:bg-[#38BDF8]/[0.1]'
+                            : 'z-20 border border-[#F59E0B]/65 bg-[#F59E0B]/[0.04] hover:bg-[#F59E0B]/[0.1]';
+
+                        return (
+                          <button
+                            key={`${element.id}-loc-${boxIndex}`}
+                            type="button"
+                            data-element-box="true"
+                            data-element-id={element.id}
+                            data-overlay-layer={layerName}
+                            data-occurrence-index={boxIndex + 1}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSelectElement(element.id);
+                            }}
+                            onMouseEnter={() => onHoverElement(element.id)}
+                            onMouseLeave={() => onHoverElement(null)}
+                            onFocus={() => onHoverElement(element.id)}
+                            onBlur={() => onHoverElement(null)}
+                            aria-pressed={isActive}
+                            aria-label={`Inspect ${ELEMENT_CATEGORY_SHORT_LABELS[element.category]}: ${element.name}${showOccurrenceIndex ? ` occurrence ${boxIndex + 1}` : ''}`}
+                            style={{
+                              left: `${box.x * 100}%`,
+                              top: `${box.y * 100}%`,
+                              width: `${box.width * 100}%`,
+                              height: `${box.height * 100}%`
+                            }}
+                            className={[
+                              'pointer-events-auto absolute rounded-[3px] transition-all duration-150 cursor-pointer focus-visible:outline-2 focus-visible:outline-accent',
+                              isComp ? 'border-solid' : 'border-dashed',
+                              isActive ? activeClasses : isHovered ? hoverClasses : idleClasses
+                            ].join(' ')}
+                          >
+                            {(isActive || isHovered) && (
+                              <span
+                                className={[
+                                  'pointer-events-none absolute max-w-[200px] truncate px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold leading-tight shadow-md whitespace-nowrap',
+                                  labelInside ? 'top-1 left-1' : '-top-5 left-0',
+                                  isActive
+                                    ? isComp
+                                      ? 'bg-[#38BDF8] text-[#051315]'
+                                      : 'bg-[#F59E0B] text-[#051315]'
+                                    : isComp
+                                      ? 'bg-[#070B0D]/95 text-[#7DD3FC] border border-[#38BDF8]/50'
+                                      : 'bg-[#070B0D]/95 text-[#FBBF24] border border-[#F59E0B]/50'
+                                ].join(' ')}
+                              >
+                                {isPrimaryBox
+                                  ? showOccurrenceIndex
+                                    ? `${element.name} #1`
+                                    : element.name
+                                  : `#${boxIndex + 1}`}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -469,7 +720,7 @@ export const ScreenshotCanvas: React.FC<ScreenshotCanvasProps> = ({
         <span className="truncate" title={image.name}>
           {selectedRegion ? (
             <>
-              Selected:{' '}
+              Region:{' '}
               <span className="text-ink font-medium">{selectedRegion.name}</span>
               <span className="mx-1.5 text-border-strong" aria-hidden="true">
                 ·
@@ -481,19 +732,46 @@ export const ScreenshotCanvas: React.FC<ScreenshotCanvasProps> = ({
                 {Math.round(selectedRegion.boundingBox.height * 100)}%)
               </span>
             </>
+          ) : selectedElement ? (
+            <>
+              Element:{' '}
+              <span className="text-ink font-medium">{selectedElement.name}</span>
+              <span className="mx-1.5 text-border-strong" aria-hidden="true">
+                ·
+              </span>
+              <span className="font-mono text-muted tabular-nums">
+                {selectedElement.repetitionStatus === 'recurring'
+                  ? `${selectedElement.occurrenceCount} occurrences highlighted`
+                  : 'Individual element'}
+              </span>
+            </>
+          ) : selectedPattern ? (
+            <>
+              Pattern:{' '}
+              <span className="text-ink font-medium">{selectedPattern.name}</span>
+              <span className="mx-1.5 text-border-strong" aria-hidden="true">
+                ·
+              </span>
+              <span className="font-mono text-[#FBBF24] tabular-nums">
+                {selectedPattern.occurrenceCount} verified occurrences
+              </span>
+            </>
           ) : (
             <span>
               Original unmodified screenshot ·{' '}
-              {regions.length > 0
-                ? 'Click any highlighted region to inspect its visual DNA'
+              {regions.length > 0 || elements.length > 0
+                ? 'Click any region, motif, or component to inspect its visual DNA'
                 : 'Use zoom and pan controls to inspect visual details'}
             </span>
           )}
         </span>
-        <span className="font-mono text-faint shrink-0">
-          {showAnnotations ? `${regions.length} active overlays` : 'Overlays hidden'}
+        <span className="font-mono text-faint shrink-0 tabular-nums">
+          {activeRegionCount + activeElementCount > 0
+            ? `${activeRegionCount} region${activeRegionCount === 1 ? '' : 's'} · ${activeElementCount} element${activeElementCount === 1 ? '' : 's'}`
+            : 'Overlays hidden'}
         </span>
       </div>
     </section>
   );
 };
+

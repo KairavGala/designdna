@@ -2,9 +2,12 @@ import type { LucideIcon } from 'lucide-react';
 import {
   BookOpen,
   Braces,
+  Columns2,
   Component,
+  Download,
   History,
   Layers,
+  LayoutDashboard,
   LayoutGrid,
   LayoutPanelTop,
   Palette,
@@ -18,6 +21,9 @@ import {
 export type PageId =
   | 'overview'
   | 'visual-investigation'
+  | 'design-anatomy'
+  | 'compare'
+  | 'export-suite'
   | 'new-analysis'
   | 'recent-analyses'
   | 'colors'
@@ -61,6 +67,9 @@ export interface PageMeta {
 export const MAIN_NAV_ITEMS: readonly PrimaryNavItem[] = [
   { id: 'overview', label: 'Overview', icon: LayoutGrid },
   { id: 'visual-investigation', label: 'Visual Investigation', icon: ScanSearch },
+  { id: 'design-anatomy', label: 'Design Anatomy', icon: LayoutDashboard },
+  { id: 'compare', label: 'Compare', icon: Columns2 },
+  { id: 'export-suite', label: 'Export Suite', icon: Download },
   { id: 'new-analysis', label: 'New Analysis', icon: ScanLine },
   { id: 'recent-analyses', label: 'Recent Analyses', icon: History }
 ];
@@ -124,7 +133,26 @@ export const PAGE_METADATA: Record<PageId, PageMeta> = {
   'visual-investigation': {
     title: 'Visual Investigation',
     section: 'Workspace',
-    description: 'Interactive screenshot canvas, region annotations, and contextual visual inspection.'
+    description:
+      'Interactive screenshot canvas, region annotations, patterns, motifs, and component visual explorer.'
+  },
+  'design-anatomy': {
+    title: 'Design Anatomy Board',
+    section: 'Workspace',
+    description:
+      'Consolidated visual identity board uniting colour, typography, patterns, motifs, components, layout, and surface language.'
+  },
+  compare: {
+    title: 'Compare',
+    section: 'Workspace',
+    description:
+      'Side-by-side visual DNA comparison, difference intelligence, and grounded refinement insights across two screenshots.'
+  },
+  'export-suite': {
+    title: 'Export Suite',
+    section: 'Workspace',
+    description:
+      'Developer exports for CSS custom properties, structured JSON tokens, Markdown & PDF reports, visual asset crops, and complete ZIP packages.'
   },
   'new-analysis': {
     title: 'New Analysis',
@@ -184,6 +212,6 @@ export const PAGE_METADATA: Record<PageId, PageMeta> = {
 };
 
 export const APP_VERSION = '0.1.0';
-export const APP_MILESTONE = 'M8 Visual Investigation';
+export const APP_MILESTONE = 'M12 Comparison & Refinement';
 export const PRODUCT_POSITIONING = 'Website Visual Intelligence';
 export const PRODUCT_TAGLINE = 'Deconstruct any website. Discover its visual DNA.';

@@ -1,9 +1,14 @@
 import { ThinkingLevel, Type, type GenerateContentResponse, type Schema } from '@google/genai';
 import { env } from '../config/env.js';
 import {
+  rawPatternRelationshipSchema,
+  rawVisualElementSchema,
   rawVisualRegionSchema,
   visualInterpretationSchema,
+  type NormalizedBoundingBox,
+  type PatternRelationship,
   type VisualAnalysisRequest,
+  type VisualElement,
   type VisualInterpretation,
   type VisualRegion
 } from '../schemas/visualAnalysis.schema.js';
@@ -23,6 +28,39 @@ const CONFIDENCE_SCHEMA: Schema = {
   enum: ['high', 'medium', 'low']
 };
 
+const BOUNDING_BOX_RESPONSE_SCHEMA: Schema = {
+  type: Type.OBJECT,
+  description:
+    'Normalized screenshot-relative coordinates where all values are decimals between 0.0 and 1.0, and x + width <= 1.0, y + height <= 1.0.',
+  required: ['x', 'y', 'width', 'height'],
+  properties: {
+    x: {
+      type: Type.NUMBER,
+      minimum: 0,
+      maximum: 1,
+      description: 'Left edge fraction (0.0 to 1.0)'
+    },
+    y: {
+      type: Type.NUMBER,
+      minimum: 0,
+      maximum: 1,
+      description: 'Top edge fraction (0.0 to 1.0)'
+    },
+    width: {
+      type: Type.NUMBER,
+      minimum: 0.02,
+      maximum: 1,
+      description: 'Width fraction (0.02 to 1.0, x + width <= 1.0)'
+    },
+    height: {
+      type: Type.NUMBER,
+      minimum: 0.02,
+      maximum: 1,
+      description: 'Height fraction (0.02 to 1.0, y + height <= 1.0)'
+    }
+  }
+};
+
 const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
   type: Type.OBJECT,
   required: [
@@ -33,7 +71,9 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
     'components',
     'layout',
     'effects',
-    'visualRegions'
+    'visualRegions',
+    'visualElements',
+    'patternRelationships'
   ],
   properties: {
     summary: {
@@ -229,38 +269,7 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
               'decorative'
             ]
           },
-          boundingBox: {
-            type: Type.OBJECT,
-            description:
-              'Normalized screenshot-relative coordinates where all values are decimals between 0.0 and 1.0, and x + width <= 1.0, y + height <= 1.0.',
-            required: ['x', 'y', 'width', 'height'],
-            properties: {
-              x: {
-                type: Type.NUMBER,
-                minimum: 0,
-                maximum: 1,
-                description: 'Left edge fraction (0.0 to 1.0)'
-              },
-              y: {
-                type: Type.NUMBER,
-                minimum: 0,
-                maximum: 1,
-                description: 'Top edge fraction (0.0 to 1.0)'
-              },
-              width: {
-                type: Type.NUMBER,
-                minimum: 0.02,
-                maximum: 1,
-                description: 'Width fraction (0.02 to 1.0, x + width <= 1.0)'
-              },
-              height: {
-                type: Type.NUMBER,
-                minimum: 0.02,
-                maximum: 1,
-                description: 'Height fraction (0.02 to 1.0, y + height <= 1.0)'
-              }
-            }
-          },
+          boundingBox: BOUNDING_BOX_RESPONSE_SCHEMA,
           boundaryPrecision: {
             type: Type.STRING,
             enum: ['precise', 'approximate']
@@ -292,6 +301,133 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
           }
         }
       }
+    },
+    visualElements: {
+      type: Type.ARRAY,
+      description:
+        '4 to 12 distinctive visible visual elements (geometric motifs, backgrounds/textures, icons/symbols, component styles, decorative details) with normalized [0.0, 1.0] locations.',
+      items: {
+        type: Type.OBJECT,
+        required: [
+          'name',
+          'category',
+          'subcategory',
+          'description',
+          'boundingBox',
+          'additionalLocations',
+          'boundaryPrecision',
+          'repetitionStatus',
+          'surfaceBasis',
+          'characteristics',
+          'confidence',
+          'evidence'
+        ],
+        properties: {
+          name: { type: Type.STRING },
+          category: {
+            type: Type.STRING,
+            enum: [
+              'geometric-motif',
+              'background-texture',
+              'icon-symbol',
+              'component-style',
+              'decorative-detail'
+            ]
+          },
+          subcategory: {
+            type: Type.STRING,
+            description:
+              'Specific element type such as Button, Card, Grid texture, Solid surface, Outline icon, Accent line, Geometric shape.'
+          },
+          description: { type: Type.STRING },
+          boundingBox: BOUNDING_BOX_RESPONSE_SCHEMA,
+          additionalLocations: {
+            type: Type.ARRAY,
+            description:
+              'Other genuinely visible occurrences of this exact visual element elsewhere on the screenshot. Leave empty [] if only one instance is visible.',
+            items: BOUNDING_BOX_RESPONSE_SCHEMA
+          },
+          boundaryPrecision: {
+            type: Type.STRING,
+            enum: ['precise', 'approximate']
+          },
+          repetitionStatus: {
+            type: Type.STRING,
+            enum: ['recurring', 'individual'],
+            description:
+              'Set to recurring ONLY when 2 or more separate occurrences are visibly present with valid bounding boxes; otherwise set to individual.'
+          },
+          surfaceBasis: {
+            type: Type.STRING,
+            enum: ['directly-visible-surface', 'inferred-visual-effect'],
+            description:
+              'Distinguish directly visible surfaces/textures (e.g. solid fill, crisp border, visible grid) from inferred visual styling.'
+          },
+          characteristics: {
+            type: Type.OBJECT,
+            required: ['geometry', 'surfaceAndColor', 'styleTraits', 'visualRole'],
+            properties: {
+              geometry: { type: Type.STRING },
+              surfaceAndColor: { type: Type.STRING },
+              styleTraits: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              visualRole: { type: Type.STRING }
+            }
+          },
+          confidence: CONFIDENCE_SCHEMA,
+          evidence: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING }
+          }
+        }
+      }
+    },
+    patternRelationships: {
+      type: Type.ARRAY,
+      description:
+        '0 to 5 shared recurring visual patterns that genuinely repeat across 2 or more separate screenshot locations. Omit single-instance elements.',
+      items: {
+        type: Type.OBJECT,
+        required: [
+          'name',
+          'patternType',
+          'description',
+          'elementNames',
+          'occurrenceCount',
+          'confidence',
+          'evidence'
+        ],
+        properties: {
+          name: { type: Type.STRING },
+          patternType: {
+            type: Type.STRING,
+            enum: [
+              'repeated-motif',
+              'shared-component-language',
+              'recurring-background',
+              'structural-rhythm'
+            ]
+          },
+          description: { type: Type.STRING },
+          elementNames: {
+            type: Type.ARRAY,
+            description: 'Exact names from visualElements that participate in this shared pattern.',
+            items: { type: Type.STRING }
+          },
+          occurrenceCount: {
+            type: Type.INTEGER,
+            minimum: 2,
+            maximum: 20
+          },
+          confidence: CONFIDENCE_SCHEMA,
+          evidence: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING }
+          }
+        }
+      }
     }
   }
 };
@@ -302,12 +438,14 @@ const SYSTEM_INSTRUCTION = [
   'Important grounding rules:',
   '1. You are given a measured pixel colour palette extracted deterministically from the image. Always prefer anchoring semanticColors.hex and semanticColors.matchedMeasuredHex to those exact measured HEX values when they match a visual role (e.g., background, surface, primary_text, primary_brand, accent, border). If a visible semantic role (such as a small text or border colour) was too small to appear in the measured palette, provide your best visual #RRGGBB estimate for hex and set matchedMeasuredHex to null.',
   '2. Never fabricate proprietary font names with false certainty — describe the typographic classification and close reference families honestly (e.g., "Geometric sans-serif (similar to Plus Jakarta Sans / Inter)").',
-  '3. Keep descriptions concise, technical, and directly observable from the screenshot. Do not invent components, sections, or shadows that are not visibly present. Never claim to have inspected hidden HTML, CSS, or DOM source code.',
+  '3. Keep descriptions concise, technical, and directly observable from the screenshot. Do not invent components, sections, textures, or shadows that are not visibly present. Never claim to have inspected hidden HTML, CSS, or DOM source code.',
   '4. Calibrate confidence honestly (high, medium, low) based on visual clarity in the screenshot.',
   '5. All hex values must be valid 6-digit uppercase hex codes like #FFFFFF.',
-  '6. For visualRegions, identify 4 to 10 visually distinct, genuinely visible regions of the screenshot (such as header/navigation, hero, main content, cards/containers, primary buttons/CTAs, text blocks, media/charts, footer, or decorative visual accents).',
-  '7. Every visualRegions[].boundingBox MUST use normalised decimal coordinates between 0.0 and 1.0 relative to the full screenshot (x = left edge / totalWidth, y = top edge / totalHeight, width = boxWidth / totalWidth, height = boxHeight / totalHeight), with x >= 0, y >= 0, width > 0.02, height > 0.02, x + width <= 1.0, and y + height <= 1.0. NEVER use pixel coordinates or 0-1000 integers.',
-  '8. Set boundaryPrecision to "precise" only when edges are visually crisp (e.g. bordered cards, navbars, solid buttons), and "approximate" when edges fade into background whitespace. If a region cannot be located reliably, omit it instead of guessing arbitrary boxes.'
+  '6. For visualRegions, identify 4 to 8 major visually distinct structural regions of the screenshot (header/navigation, hero, main content, cards/containers, buttons/CTAs, text blocks, media/charts, footer, decorative).',
+  '7. Every boundingBox (in visualRegions and visualElements) MUST use normalised decimal coordinates between 0.0 and 1.0 relative to the full screenshot (x = left / totalWidth, y = top / totalHeight, width = boxWidth / totalWidth, height = boxHeight / totalHeight), with x >= 0, y >= 0, width >= 0.02, height >= 0.02, x + width <= 1.0, and y + height <= 1.0. NEVER use pixel coordinates or 0-1000 integers.',
+  '8. Set boundaryPrecision to "precise" only when edges are visually crisp (bordered cards, navbars, solid buttons), and "approximate" when edges blend into background whitespace.',
+  '9. For visualElements, identify 4 to 10 genuinely visible distinctive visual elements across geometric-motif, background-texture, icon-symbol, component-style, and decorative-detail. Never claim an icon library or asset source unless directly verifiable from the pixels. Only include additionalLocations when the same visual element genuinely repeats in separate visible places; otherwise leave additionalLocations empty [] and set repetitionStatus to "individual".',
+  '10. For patternRelationships, ONLY group elements that genuinely repeat across 2 or more separate visible occurrences on the screenshot. NEVER claim repetition from a single occurrence. Reference exact element names from visualElements in elementNames.'
 ].join('\n');
 
 function buildPromptText(request: VisualAnalysisRequest): string {
@@ -321,7 +459,7 @@ function buildPromptText(request: VisualAnalysisRequest): string {
     'Measured pixel colour palette (deterministic Canvas extraction):',
     paletteLines,
     '',
-    'Infer the structured design system properties across semantic colour roles, typography hierarchy, spacing rhythm, visible UI components, layout structure, visual effects (borders, radii, shadows), and screenshot-relative visualRegions with normalised [0.0..1.0] bounding boxes.'
+    'Infer the structured design system properties across semantic colour roles, typography hierarchy, spacing rhythm, visible UI components, layout structure, visual effects, structural visualRegions, distinctive visualElements (motifs, textures, icons, component styles, decorative details), and verified multi-occurrence patternRelationships using normalised [0.0..1.0] bounding boxes.'
   ].join('\n');
 }
 
@@ -744,6 +882,233 @@ function validateAndNormalizeServerRegions(rawRegions: unknown): VisualRegion[] 
   return validRegions;
 }
 
+function clampNormalizedBox(box: NormalizedBoundingBox): NormalizedBoundingBox | null {
+  const x = roundCoord(box.x);
+  const y = roundCoord(box.y);
+  const width = roundCoord(Math.min(box.width, 1 - x));
+  const height = roundCoord(Math.min(box.height, 1 - y));
+  if (width < 0.015 || height < 0.015) return null;
+  return { x, y, width, height };
+}
+
+function computeBoxIoU(a: NormalizedBoundingBox, b: NormalizedBoundingBox): number {
+  const x1 = Math.max(a.x, b.x);
+  const y1 = Math.max(a.y, b.y);
+  const x2 = Math.min(a.x + a.width, b.x + b.width);
+  const y2 = Math.min(a.y + a.height, b.y + b.height);
+  if (x2 <= x1 || y2 <= y1) return 0;
+  const inter = (x2 - x1) * (y2 - y1);
+  const union = a.width * a.height + b.width * b.height - inter;
+  return union > 0 ? inter / union : 0;
+}
+
+function computeContainmentRatio(
+  inner: NormalizedBoundingBox,
+  outer: NormalizedBoundingBox
+): number {
+  const x1 = Math.max(inner.x, outer.x);
+  const y1 = Math.max(inner.y, outer.y);
+  const x2 = Math.min(inner.x + inner.width, outer.x + outer.width);
+  const y2 = Math.min(inner.y + inner.height, outer.y + outer.height);
+  if (x2 <= x1 || y2 <= y1) return 0;
+  const inter = (x2 - x1) * (y2 - y1);
+  const innerArea = inner.width * inner.height;
+  return innerArea > 0 ? inter / innerArea : 0;
+}
+
+function findContainingRegion(
+  box: NormalizedBoundingBox,
+  regions: readonly VisualRegion[]
+): VisualRegion | null {
+  if (regions.length === 0) return null;
+
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  let best: VisualRegion | null = null;
+  let bestScore = 0;
+
+  for (const region of regions) {
+    const rb = region.boundingBox;
+    const containment = computeContainmentRatio(box, rb);
+    const centerInside =
+      cx >= rb.x && cx <= rb.x + rb.width && cy >= rb.y && cy <= rb.y + rb.height;
+    if (containment < 0.3 && !centerInside) continue;
+    // Prefer tightest containing region when overlap is high
+    const regionArea = Math.max(0.001, rb.width * rb.height);
+    const score = containment * 2 + (centerInside ? 0.5 : 0) - regionArea * 0.15;
+    if (score > bestScore) {
+      bestScore = score;
+      best = region;
+    }
+  }
+
+  return best;
+}
+
+function validateAndNormalizeServerElements(
+  rawElements: unknown,
+  regions: readonly VisualRegion[]
+): VisualElement[] {
+  if (!Array.isArray(rawElements)) return [];
+
+  const validElements: VisualElement[] = [];
+  const usedIds = new Set<string>();
+
+  for (const candidate of rawElements) {
+    if (validElements.length >= 16) break;
+    const parsed = rawVisualElementSchema.safeParse(candidate);
+    if (!parsed.success) {
+      const reason = parsed.error.issues
+        .slice(0, 2)
+        .map((iss) => `${iss.path.join('.')}: ${iss.message}`)
+        .join('; ');
+      console.warn(`[GeminiVisualAnalysis] Rejected invalid visualElement candidate: ${reason}`);
+      continue;
+    }
+
+    const item = parsed.data;
+    const primaryBox = clampNormalizedBox(item.boundingBox);
+    if (!primaryBox) continue;
+
+    // Deduplicate additional locations so near-identical boxes never inflate repetition count
+    const distinctAdditional: NormalizedBoundingBox[] = [];
+    for (const extra of item.additionalLocations) {
+      const clamped = clampNormalizedBox(extra);
+      if (!clamped) continue;
+      if (computeBoxIoU(primaryBox, clamped) > 0.65) continue;
+      if (distinctAdditional.some((existing) => computeBoxIoU(existing, clamped) > 0.65)) continue;
+      distinctAdditional.push(clamped);
+    }
+
+    const parentRegion = findContainingRegion(primaryBox, regions);
+    const relatedRegionSet = new Set<string>();
+    if (parentRegion) relatedRegionSet.add(parentRegion.id);
+    for (const loc of distinctAdditional) {
+      const reg = findContainingRegion(loc, regions);
+      if (reg) relatedRegionSet.add(reg.id);
+    }
+
+    const occurrenceCount = 1 + distinctAdditional.length;
+    // Strictly prevent claiming repetition from a single visible occurrence
+    const repetitionStatus = occurrenceCount >= 2 ? 'recurring' : 'individual';
+
+    const baseId = `el-${item.category}-${slugifyRegionName(item.name)}-${Math.round(primaryBox.x * 100)}-${Math.round(primaryBox.y * 100)}`;
+    let id = baseId;
+    let suffix = 2;
+    while (usedIds.has(id)) {
+      id = `${baseId}-${suffix}`;
+      suffix += 1;
+    }
+    usedIds.add(id);
+
+    validElements.push({
+      ...item,
+      id,
+      boundingBox: primaryBox,
+      additionalLocations: distinctAdditional,
+      repetitionStatus,
+      parentRegionId: parentRegion?.id ?? null,
+      parentRegionName: parentRegion?.name ?? null,
+      relatedRegionIds: Array.from(relatedRegionSet),
+      occurrenceCount
+    });
+  }
+
+  validElements.sort((a, b) => {
+    const dy = a.boundingBox.y - b.boundingBox.y;
+    if (Math.abs(dy) > 0.02) return dy;
+    return a.boundingBox.x - b.boundingBox.x;
+  });
+
+  return validElements;
+}
+
+function validateAndNormalizeServerPatterns(
+  rawPatterns: unknown,
+  elements: readonly VisualElement[]
+): PatternRelationship[] {
+  if (!Array.isArray(rawPatterns) || elements.length === 0) return [];
+
+  const validPatterns: PatternRelationship[] = [];
+  const usedIds = new Set<string>();
+
+  const elementByLowerName = new Map<string, VisualElement>();
+  for (const el of elements) {
+    elementByLowerName.set(el.name.trim().toLowerCase(), el);
+  }
+
+  for (const candidate of rawPatterns) {
+    if (validPatterns.length >= 8) break;
+    const parsed = rawPatternRelationshipSchema.safeParse(candidate);
+    if (!parsed.success) continue;
+
+    const item = parsed.data;
+    const matchedElements: VisualElement[] = [];
+    const seenElIds = new Set<string>();
+
+    for (const rawName of item.elementNames) {
+      const needle = rawName.trim().toLowerCase();
+      let found = elementByLowerName.get(needle);
+      if (!found) {
+        found = elements.find(
+          (el) =>
+            el.name.toLowerCase().includes(needle) || needle.includes(el.name.toLowerCase())
+        );
+      }
+      if (found && !seenElIds.has(found.id)) {
+        seenElIds.add(found.id);
+        matchedElements.push(found);
+      }
+    }
+
+    if (matchedElements.length === 0) continue;
+
+    // Count verified distinct screenshot locations across linked elements
+    const allBoxes: NormalizedBoundingBox[] = [];
+    for (const el of matchedElements) {
+      const boxes = [el.boundingBox, ...el.additionalLocations];
+      for (const b of boxes) {
+        if (!allBoxes.some((existing) => computeBoxIoU(existing, b) > 0.65)) {
+          allBoxes.push(b);
+        }
+      }
+    }
+
+    // Strict anti-hallucination gate: never form a recurring pattern from < 2 distinct verified locations
+    if (allBoxes.length < 2) continue;
+
+    const regionIdSet = new Set<string>();
+    for (const el of matchedElements) {
+      for (const rId of el.relatedRegionIds) {
+        regionIdSet.add(rId);
+      }
+    }
+
+    const baseId = `pat-${item.patternType}-${slugifyRegionName(item.name)}`;
+    let id = baseId;
+    let suffix = 2;
+    while (usedIds.has(id)) {
+      id = `${baseId}-${suffix}`;
+      suffix += 1;
+    }
+    usedIds.add(id);
+
+    validPatterns.push({
+      id,
+      name: item.name.trim(),
+      patternType: item.patternType,
+      description: item.description.trim(),
+      elementIds: matchedElements.map((e) => e.id),
+      regionIds: Array.from(regionIdSet),
+      occurrenceCount: allBoxes.length,
+      confidence: item.confidence,
+      evidence: item.evidence.map((e) => e.trim()).filter(Boolean)
+    });
+  }
+
+  return validPatterns;
+}
+
 export async function analyzeScreenshotVisuals(
   request: VisualAnalysisRequest
 ): Promise<VisualAnalysisResult> {
@@ -809,16 +1174,34 @@ export async function analyzeScreenshotVisuals(
     );
   }
 
-  // Pre-validate and filter visualRegions individually so a single malformed box is rejected cleanly without breaking M5 core outputs
-  const sanitizedPayload =
-    typeof parsedJson === 'object' && parsedJson !== null
-      ? {
-          ...(parsedJson as Record<string, unknown>),
-          visualRegions: validateAndNormalizeServerRegions(
-            (parsedJson as Record<string, unknown>).visualRegions
-          )
-        }
-      : parsedJson;
+  // Pre-validate visualRegions, visualElements, and patternRelationships individually so a single malformed candidate never breaks M5 core outputs
+  let sanitizedPayload: unknown = parsedJson;
+  if (typeof parsedJson === 'object' && parsedJson !== null) {
+    const rawObj = parsedJson as Record<string, unknown>;
+    const normalizedRegions = validateAndNormalizeServerRegions(rawObj.visualRegions);
+    const normalizedElements = validateAndNormalizeServerElements(
+      rawObj.visualElements,
+      normalizedRegions
+    );
+    const normalizedPatterns = validateAndNormalizeServerPatterns(
+      rawObj.patternRelationships,
+      normalizedElements
+    );
+    // Upgrade element repetitionStatus to 'recurring' if it participates in a verified multi-location pattern relationship
+    const recurringFromPatternIds = new Set(normalizedPatterns.flatMap((p) => p.elementIds));
+    const finalElements = normalizedElements.map((el) =>
+      recurringFromPatternIds.has(el.id) && el.repetitionStatus === 'individual'
+        ? { ...el, repetitionStatus: 'recurring' as const }
+        : el
+    );
+
+    sanitizedPayload = {
+      ...rawObj,
+      visualRegions: normalizedRegions,
+      visualElements: finalElements,
+      patternRelationships: normalizedPatterns
+    };
+  }
 
   const validated = visualInterpretationSchema.safeParse(sanitizedPayload);
   if (!validated.success) {
