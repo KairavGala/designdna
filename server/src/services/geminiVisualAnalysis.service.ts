@@ -1,6 +1,7 @@
 import { ThinkingLevel, Type, type GenerateContentResponse, type Schema } from '@google/genai';
 import { env } from '../config/env.js';
 import {
+  normalizedBoundingBoxSchema,
   rawPatternRelationshipSchema,
   rawVisualElementSchema,
   rawVisualRegionSchema,
@@ -46,37 +47,32 @@ const CONFIDENCE_SCHEMA: Schema = {
 const BOUNDING_BOX_RESPONSE_SCHEMA: Schema = {
   type: Type.OBJECT,
   description:
-    'Normalized screenshot-relative coordinates where all values are decimals between 0.0 and 1.0, and x + width <= 1.0, y + height <= 1.0.',
+    'Normalized screenshot-relative coordinates as decimals in [0.0, 1.0] where x + width <= 1.0 and y + height <= 1.0.',
   required: ['x', 'y', 'width', 'height'],
   properties: {
     x: {
       type: Type.NUMBER,
-      minimum: 0,
-      maximum: 1,
-      description: 'Left edge fraction (0.0 to 1.0)'
+      description: 'Left edge fraction in [0.0, 1.0]'
     },
     y: {
       type: Type.NUMBER,
-      minimum: 0,
-      maximum: 1,
-      description: 'Top edge fraction (0.0 to 1.0)'
+      description: 'Top edge fraction in [0.0, 1.0]'
     },
     width: {
       type: Type.NUMBER,
-      minimum: 0.02,
-      maximum: 1,
-      description: 'Width fraction (0.02 to 1.0, x + width <= 1.0)'
+      description: 'Width fraction in [0.02, 1.0], x + width <= 1.0'
     },
     height: {
       type: Type.NUMBER,
-      minimum: 0.02,
-      maximum: 1,
-      description: 'Height fraction (0.02 to 1.0, y + height <= 1.0)'
+      description: 'Height fraction in [0.02, 1.0], y + height <= 1.0'
     }
   }
 };
 
-const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
+// Keep the serving JSON schema free of maxItems and numeric min/max range constraints so
+// gemini-3.1-flash-lite compiles a compact structured-output grammar; server-side Zod and
+// normalizers enforce all array bounds, coordinate invariants, and deduplication strictly.
+export const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
   type: Type.OBJECT,
   required: [
     'summary',
@@ -104,7 +100,6 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
     },
     semanticColors: {
       type: Type.ARRAY,
-      maxItems: '8',
       items: {
         type: Type.OBJECT,
         required: ['role', 'label', 'hex', 'matchedMeasuredHex', 'rationale', 'confidence'],
@@ -147,7 +142,6 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
         scaleSummary: { type: Type.STRING },
         hierarchy: {
           type: Type.ARRAY,
-          maxItems: '6',
           items: {
             type: Type.OBJECT,
             required: ['level', 'estimatedSize', 'estimatedWeight', 'lineHeight', 'usage', 'confidence'],
@@ -174,7 +168,6 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
         containerPadding: { type: Type.STRING },
         scaleSteps: {
           type: Type.ARRAY,
-          maxItems: '6',
           items: {
             type: Type.OBJECT,
             required: ['token', 'value', 'usage'],
@@ -190,7 +183,6 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
     },
     components: {
       type: Type.ARRAY,
-      maxItems: '8',
       items: {
         type: Type.OBJECT,
         required: ['name', 'category', 'visualTreatment', 'borderRadius', 'emphasis', 'confidence'],
@@ -217,7 +209,6 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
         contentWidth: { type: Type.STRING },
         regions: {
           type: Type.ARRAY,
-          maxItems: '6',
           items: {
             type: Type.OBJECT,
             required: ['name', 'role', 'proportion'],
@@ -243,7 +234,6 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
         shadowStyle: { type: Type.STRING },
         borderRadiusScale: {
           type: Type.ARRAY,
-          maxItems: '5',
           items: {
             type: Type.OBJECT,
             required: ['label', 'value', 'usage'],
@@ -260,7 +250,6 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
     },
     visualRegions: {
       type: Type.ARRAY,
-      maxItems: '8',
       description:
         '4 to 8 major visually distinct UI regions with normalized [0.0, 1.0] bounding boxes.',
       items: {
@@ -319,7 +308,6 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
           confidence: CONFIDENCE_SCHEMA,
           evidence: {
             type: Type.ARRAY,
-            maxItems: '3',
             items: { type: Type.STRING }
           }
         }
@@ -327,7 +315,6 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
     },
     visualElements: {
       type: Type.ARRAY,
-      maxItems: '10',
       description:
         '4 to 10 distinctive visible visual elements (geometric motifs, backgrounds/textures, icons/symbols, component styles, decorative details) with normalized [0.0, 1.0] locations.',
       items: {
@@ -367,7 +354,6 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
           boundingBox: BOUNDING_BOX_RESPONSE_SCHEMA,
           additionalLocations: {
             type: Type.ARRAY,
-            maxItems: '4',
             description:
               'Other genuinely visible occurrences of this exact visual element elsewhere on the screenshot. Leave empty [] if only one instance is visible.',
             items: BOUNDING_BOX_RESPONSE_SCHEMA
@@ -396,7 +382,6 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
               surfaceAndColor: { type: Type.STRING },
               styleTraits: {
                 type: Type.ARRAY,
-                maxItems: '4',
                 items: { type: Type.STRING }
               },
               visualRole: { type: Type.STRING }
@@ -405,7 +390,6 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
           confidence: CONFIDENCE_SCHEMA,
           evidence: {
             type: Type.ARRAY,
-            maxItems: '3',
             items: { type: Type.STRING }
           }
         }
@@ -413,7 +397,6 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
     },
     patternRelationships: {
       type: Type.ARRAY,
-      maxItems: '5',
       description:
         '0 to 5 shared recurring visual patterns that genuinely repeat across 2 or more separate screenshot locations. Omit single-instance elements.',
       items: {
@@ -441,19 +424,16 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
           description: { type: Type.STRING },
           elementNames: {
             type: Type.ARRAY,
-            maxItems: '6',
             description: 'Exact names from visualElements that participate in this shared pattern.',
             items: { type: Type.STRING }
           },
           occurrenceCount: {
             type: Type.INTEGER,
-            minimum: 2,
-            maximum: 20
+            description: 'Integer count >= 2 of distinct visible occurrences.'
           },
           confidence: CONFIDENCE_SCHEMA,
           evidence: {
             type: Type.ARRAY,
-            maxItems: '3',
             items: { type: Type.STRING }
           }
         }
@@ -471,12 +451,13 @@ const SYSTEM_INSTRUCTION = [
   '3. Keep descriptions concise, technical, and directly observable from the screenshot. Do not invent components, sections, textures, or shadows that are not visibly present. Never claim to have inspected hidden HTML, CSS, or DOM source code.',
   '4. Calibrate confidence honestly (high, medium, low) based on visual clarity in the screenshot.',
   '5. All hex values must be valid 6-digit uppercase hex codes like #FFFFFF.',
-  '6. For visualRegions, identify 4 to 8 major visually distinct structural regions of the screenshot (header/navigation, hero, main content, cards/containers, buttons/CTAs, text blocks, media/charts, footer, decorative).',
-  '7. Every boundingBox (in visualRegions and visualElements) MUST use normalised decimal coordinates between 0.0 and 1.0 relative to the full screenshot (x = left / totalWidth, y = top / totalHeight, width = boxWidth / totalWidth, height = boxHeight / totalHeight), with x >= 0, y >= 0, width >= 0.02, height >= 0.02, x + width <= 1.0, and y + height <= 1.0. NEVER use pixel coordinates or 0-1000 integers.',
-  '8. Set boundaryPrecision to "precise" only when edges are visually crisp (bordered cards, navbars, solid buttons), and "approximate" when edges blend into background whitespace.',
-  '9. For visualElements, identify 4 to 10 genuinely visible distinctive visual elements across geometric-motif, background-texture, icon-symbol, component-style, and decorative-detail. Never claim an icon library or asset source unless directly verifiable from the pixels. Only include additionalLocations when the same visual element genuinely repeats in separate visible places; otherwise leave additionalLocations empty [] and set repetitionStatus to "individual".',
-  '10. For patternRelationships, ONLY group elements that genuinely repeat across 2 or more separate visible occurrences on the screenshot. NEVER claim repetition from a single occurrence. Reference exact element names from visualElements in elementNames.',
-  '11. Keep every description, rationale, and observation field concise and crisp (1 short sentence, ~8–20 words) and provide 1–2 brief evidence items per region, element, or pattern so the JSON response remains focused and fast to generate without omitting required findings.'
+  '6. Keep arrays focused and high-signal: return 4–8 semanticColors, 3–6 typography.hierarchy entries, 3–6 spacing.scaleSteps, 3–8 components, 3–6 layout.regions, and 3–5 effects.borderRadiusScale entries.',
+  '7. For visualRegions, identify 4 to 8 major visually distinct structural regions of the screenshot (header/navigation, hero, main content, cards/containers, buttons/CTAs, text blocks, media/charts, footer, decorative).',
+  '8. Every boundingBox (in visualRegions and visualElements) MUST use normalised decimal coordinates between 0.0 and 1.0 relative to the full screenshot (x = left / totalWidth, y = top / totalHeight, width = boxWidth / totalWidth, height = boxHeight / totalHeight), with x >= 0, y >= 0, width >= 0.02, height >= 0.02, x + width <= 1.0, and y + height <= 1.0. NEVER use pixel coordinates or 0-1000 integers.',
+  '9. Set boundaryPrecision to "precise" only when edges are visually crisp (bordered cards, navbars, solid buttons), and "approximate" when edges blend into background whitespace.',
+  '10. For visualElements, identify 4 to 10 genuinely visible distinctive visual elements across geometric-motif, background-texture, icon-symbol, component-style, and decorative-detail. Never claim an icon library or asset source unless directly verifiable from the pixels. Only include additionalLocations (up to 4) when the same visual element genuinely repeats in separate visible places; otherwise leave additionalLocations empty [] and set repetitionStatus to "individual". Include 2–4 concise styleTraits per element.',
+  '11. For patternRelationships, return 0 to 5 shared patterns that genuinely repeat across 2 or more separate visible occurrences on the screenshot (occurrenceCount >= 2). NEVER claim repetition from a single occurrence. Reference exact element names from visualElements in elementNames (up to 6).',
+  '12. Keep every description, rationale, and observation field concise and crisp (1 short sentence, ~8–20 words) and provide 1–3 brief evidence items per region, element, or pattern so the JSON response remains focused and fast to generate without omitting required findings.'
 ].join('\n');
 
 function buildPromptText(request: VisualAnalysisRequest): string {
@@ -867,6 +848,56 @@ function roundCoord(value: number): number {
   return Math.round(value * 10000) / 10000;
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function boundStringList(value: unknown, maxItems: number, maxChars?: number): unknown {
+  if (!Array.isArray(value) || !value.every((entry): entry is string => typeof entry === 'string')) {
+    return value;
+  }
+  return value
+    .map((entry) => {
+      const trimmed = entry.trim();
+      return maxChars !== undefined && trimmed.length > maxChars
+        ? trimmed.slice(0, maxChars).trim()
+        : trimmed;
+    })
+    .filter((entry) => entry.length > 0)
+    .slice(0, maxItems);
+}
+
+function boundOptionalString(value: unknown, maxChars: number): unknown {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  return trimmed.length > maxChars ? trimmed.slice(0, maxChars).trim() : trimmed;
+}
+
+function normalizeRawRegionCandidate(candidate: unknown): unknown {
+  if (!isPlainRecord(candidate)) return candidate;
+  const obs = isPlainRecord(candidate.observations)
+    ? {
+        ...candidate.observations,
+        typography:
+          candidate.observations.typography === undefined
+            ? null
+            : candidate.observations.typography,
+        decorativeElements:
+          candidate.observations.decorativeElements === undefined
+            ? null
+            : candidate.observations.decorativeElements
+      }
+    : candidate.observations;
+
+  return {
+    ...candidate,
+    name: boundOptionalString(candidate.name, 160),
+    description: boundOptionalString(candidate.description, 600),
+    observations: obs,
+    evidence: boundStringList(candidate.evidence, 8)
+  };
+}
+
 function validateAndNormalizeServerRegions(rawRegions: unknown): VisualRegion[] {
   if (!Array.isArray(rawRegions)) return [];
 
@@ -875,7 +906,8 @@ function validateAndNormalizeServerRegions(rawRegions: unknown): VisualRegion[] 
 
   for (const candidate of rawRegions) {
     if (validRegions.length >= 12) break;
-    const parsed = rawVisualRegionSchema.safeParse(candidate);
+    const prepared = normalizeRawRegionCandidate(candidate);
+    const parsed = rawVisualRegionSchema.safeParse(prepared);
     if (!parsed.success) {
       const reason = parsed.error.issues
         .slice(0, 2)
@@ -985,6 +1017,42 @@ function findContainingRegion(
   return best;
 }
 
+function normalizeRawElementCandidate(candidate: unknown): unknown {
+  if (!isPlainRecord(candidate)) return candidate;
+
+  // Pass non-object garbage through to Zod for strict rejection; for box objects,
+  // drop invalid/out-of-bounds extra boxes and cap additionalLocations to 6.
+  const additionalLocations = Array.isArray(candidate.additionalLocations)
+    ? candidate.additionalLocations.every((loc) => isPlainRecord(loc))
+      ? candidate.additionalLocations
+          .filter((loc) => normalizedBoundingBoxSchema.safeParse(loc).success)
+          .slice(0, 6)
+      : candidate.additionalLocations
+    : candidate.additionalLocations === undefined || candidate.additionalLocations === null
+      ? []
+      : candidate.additionalLocations;
+
+  const characteristics = isPlainRecord(candidate.characteristics)
+    ? {
+        ...candidate.characteristics,
+        geometry: boundOptionalString(candidate.characteristics.geometry, 240),
+        surfaceAndColor: boundOptionalString(candidate.characteristics.surfaceAndColor, 240),
+        styleTraits: boundStringList(candidate.characteristics.styleTraits, 6, 80),
+        visualRole: boundOptionalString(candidate.characteristics.visualRole, 280)
+      }
+    : candidate.characteristics;
+
+  return {
+    ...candidate,
+    name: boundOptionalString(candidate.name, 160),
+    subcategory: boundOptionalString(candidate.subcategory, 100),
+    description: boundOptionalString(candidate.description, 600),
+    additionalLocations,
+    characteristics,
+    evidence: boundStringList(candidate.evidence, 6)
+  };
+}
+
 function validateAndNormalizeServerElements(
   rawElements: unknown,
   regions: readonly VisualRegion[]
@@ -996,7 +1064,8 @@ function validateAndNormalizeServerElements(
 
   for (const candidate of rawElements) {
     if (validElements.length >= 16) break;
-    const parsed = rawVisualElementSchema.safeParse(candidate);
+    const prepared = normalizeRawElementCandidate(candidate);
+    const parsed = rawVisualElementSchema.safeParse(prepared);
     if (!parsed.success) {
       const reason = parsed.error.issues
         .slice(0, 2)
@@ -1063,6 +1132,25 @@ function validateAndNormalizeServerElements(
   return validElements;
 }
 
+function normalizeRawPatternCandidate(candidate: unknown): unknown {
+  if (!isPlainRecord(candidate)) return candidate;
+
+  const rawCount = candidate.occurrenceCount;
+  const boundedCount =
+    typeof rawCount === 'number' && Number.isInteger(rawCount) && rawCount >= 2
+      ? Math.min(20, rawCount)
+      : rawCount;
+
+  return {
+    ...candidate,
+    name: boundOptionalString(candidate.name, 160),
+    description: boundOptionalString(candidate.description, 600),
+    elementNames: boundStringList(candidate.elementNames, 8),
+    occurrenceCount: boundedCount,
+    evidence: boundStringList(candidate.evidence, 6)
+  };
+}
+
 function validateAndNormalizeServerPatterns(
   rawPatterns: unknown,
   elements: readonly VisualElement[]
@@ -1079,7 +1167,8 @@ function validateAndNormalizeServerPatterns(
 
   for (const candidate of rawPatterns) {
     if (validPatterns.length >= 8) break;
-    const parsed = rawPatternRelationshipSchema.safeParse(candidate);
+    const prepared = normalizeRawPatternCandidate(candidate);
+    const parsed = rawPatternRelationshipSchema.safeParse(prepared);
     if (!parsed.success) continue;
 
     const item = parsed.data;
@@ -1147,6 +1236,128 @@ function validateAndNormalizeServerPatterns(
   }
 
   return validPatterns;
+}
+
+export function normalizeAndValidateVisualInterpretation(
+  parsedJson: unknown,
+  measuredPalette: VisualAnalysisRequest['measuredPalette']
+): VisualInterpretation {
+  // Pre-bound top-level M5 arrays and normalize optional nullable fields, and validate M8/M9
+  // candidates individually so oversized valid arrays or a single invalid candidate never break M5 core outputs.
+  let sanitizedPayload: unknown = parsedJson;
+  if (isPlainRecord(parsedJson)) {
+    const rawObj = parsedJson;
+    const normalizedRegions = validateAndNormalizeServerRegions(rawObj.visualRegions);
+    const normalizedElements = validateAndNormalizeServerElements(
+      rawObj.visualElements,
+      normalizedRegions
+    );
+    const normalizedPatterns = validateAndNormalizeServerPatterns(
+      rawObj.patternRelationships,
+      normalizedElements
+    );
+    // Upgrade element repetitionStatus to 'recurring' if it participates in a verified multi-location pattern relationship
+    const recurringFromPatternIds = new Set(normalizedPatterns.flatMap((p) => p.elementIds));
+    const finalElements = normalizedElements.map((el) =>
+      recurringFromPatternIds.has(el.id) && el.repetitionStatus === 'individual'
+        ? { ...el, repetitionStatus: 'recurring' as const }
+        : el
+    );
+
+    const boundedSemanticColors = Array.isArray(rawObj.semanticColors)
+      ? rawObj.semanticColors.slice(0, 10).map((entry) =>
+          isPlainRecord(entry)
+            ? {
+                ...entry,
+                matchedMeasuredHex:
+                  entry.matchedMeasuredHex === undefined ? null : entry.matchedMeasuredHex
+              }
+            : entry
+        )
+      : rawObj.semanticColors;
+
+    const boundedTypography = isPlainRecord(rawObj.typography)
+      ? {
+          ...rawObj.typography,
+          hierarchy: Array.isArray(rawObj.typography.hierarchy)
+            ? rawObj.typography.hierarchy.slice(0, 8)
+            : rawObj.typography.hierarchy
+        }
+      : rawObj.typography;
+
+    const boundedSpacing = isPlainRecord(rawObj.spacing)
+      ? {
+          ...rawObj.spacing,
+          scaleSteps: Array.isArray(rawObj.spacing.scaleSteps)
+            ? rawObj.spacing.scaleSteps.slice(0, 8)
+            : rawObj.spacing.scaleSteps
+        }
+      : rawObj.spacing;
+
+    const boundedComponents = Array.isArray(rawObj.components)
+      ? rawObj.components.slice(0, 10)
+      : rawObj.components;
+
+    const boundedLayout = isPlainRecord(rawObj.layout)
+      ? {
+          ...rawObj.layout,
+          regions: Array.isArray(rawObj.layout.regions)
+            ? rawObj.layout.regions.slice(0, 8)
+            : rawObj.layout.regions
+        }
+      : rawObj.layout;
+
+    const boundedEffects = isPlainRecord(rawObj.effects)
+      ? {
+          ...rawObj.effects,
+          borderRadiusScale: Array.isArray(rawObj.effects.borderRadiusScale)
+            ? rawObj.effects.borderRadiusScale.slice(0, 6)
+            : rawObj.effects.borderRadiusScale
+        }
+      : rawObj.effects;
+
+    sanitizedPayload = {
+      ...rawObj,
+      semanticColors: boundedSemanticColors,
+      typography: boundedTypography,
+      spacing: boundedSpacing,
+      components: boundedComponents,
+      layout: boundedLayout,
+      effects: boundedEffects,
+      visualRegions: normalizedRegions,
+      visualElements: finalElements,
+      patternRelationships: normalizedPatterns
+    };
+  }
+
+  const validated = visualInterpretationSchema.safeParse(sanitizedPayload);
+  if (!validated.success) {
+    throw new GeminiServiceError(
+      'INVALID_AI_RESPONSE',
+      500,
+      'Gemini visual interpretation response failed schema validation.'
+    );
+  }
+
+  // Normalize HEX formatting to uppercase for consistent comparison against M4 measured values
+  const measuredSet = new Set(measuredPalette.map((c) => normalizeHexUpper(c.hex)));
+  return {
+    ...validated.data,
+    semanticColors: validated.data.semanticColors.map((item) => {
+      const hex = normalizeHexUpper(item.hex);
+      const matched =
+        item.matchedMeasuredHex && measuredSet.has(normalizeHexUpper(item.matchedMeasuredHex))
+          ? normalizeHexUpper(item.matchedMeasuredHex)
+          : measuredSet.has(hex)
+            ? hex
+            : null;
+      return {
+        ...item,
+        hex,
+        matchedMeasuredHex: matched
+      };
+    })
+  };
 }
 
 export async function analyzeScreenshotVisuals(
@@ -1292,63 +1503,10 @@ export async function analyzeScreenshotVisuals(
     );
   }
 
-  // Pre-validate visualRegions, visualElements, and patternRelationships individually so a single malformed candidate never breaks M5 core outputs
-  let sanitizedPayload: unknown = parsedJson;
-  if (typeof parsedJson === 'object' && parsedJson !== null) {
-    const rawObj = parsedJson as Record<string, unknown>;
-    const normalizedRegions = validateAndNormalizeServerRegions(rawObj.visualRegions);
-    const normalizedElements = validateAndNormalizeServerElements(
-      rawObj.visualElements,
-      normalizedRegions
-    );
-    const normalizedPatterns = validateAndNormalizeServerPatterns(
-      rawObj.patternRelationships,
-      normalizedElements
-    );
-    // Upgrade element repetitionStatus to 'recurring' if it participates in a verified multi-location pattern relationship
-    const recurringFromPatternIds = new Set(normalizedPatterns.flatMap((p) => p.elementIds));
-    const finalElements = normalizedElements.map((el) =>
-      recurringFromPatternIds.has(el.id) && el.repetitionStatus === 'individual'
-        ? { ...el, repetitionStatus: 'recurring' as const }
-        : el
-    );
-
-    sanitizedPayload = {
-      ...rawObj,
-      visualRegions: normalizedRegions,
-      visualElements: finalElements,
-      patternRelationships: normalizedPatterns
-    };
-  }
-
-  const validated = visualInterpretationSchema.safeParse(sanitizedPayload);
-  if (!validated.success) {
-    throw new GeminiServiceError(
-      'INVALID_AI_RESPONSE',
-      500,
-      'Gemini visual interpretation response failed schema validation.'
-    );
-  }
-
-  // Normalize HEX formatting to uppercase for consistent comparison against M4 measured values
-  const measuredSet = new Set(request.measuredPalette.map((c) => normalizeHexUpper(c.hex)));
-  const normalizedInterpretation: VisualInterpretation = {
-    ...validated.data,
-    semanticColors: validated.data.semanticColors.map((item) => {
-      const hex = normalizeHexUpper(item.hex);
-      const matched =
-        item.matchedMeasuredHex && measuredSet.has(normalizeHexUpper(item.matchedMeasuredHex))
-          ? normalizeHexUpper(item.matchedMeasuredHex)
-          : measuredSet.has(hex)
-            ? hex
-            : null;
-      return {
-        ...item,
-        hex,
-        matchedMeasuredHex: matched
-      };
-    })
-  };
+  const normalizedInterpretation = normalizeAndValidateVisualInterpretation(
+    parsedJson,
+    request.measuredPalette
+  );
 
   const parseMs = Math.max(0, Math.round(performance.now() - parseStartedAt));
   logServiceStage('parsing_completed', {

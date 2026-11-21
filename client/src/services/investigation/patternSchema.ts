@@ -60,7 +60,7 @@ export const patternRelationshipInputSchema = z.object({
   elementIds: z.array(z.string().min(1)).min(1).optional(),
   elementNames: z.array(z.string().min(1)).min(1).optional(),
   regionIds: z.array(z.string().min(1)).optional(),
-  occurrenceCount: z.number().int().min(1).max(20).optional(),
+  occurrenceCount: z.number().int().min(1).optional(),
   confidence: confidenceLevelSchema,
   evidence: z.array(z.string().min(1)).min(1).max(6)
 });
