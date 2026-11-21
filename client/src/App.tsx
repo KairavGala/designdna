@@ -121,13 +121,22 @@ export const App: React.FC = () => {
   }, [colorExtraction, imageUpload.image, resetVisualAnalysis, handleNavigate]);
 
   const handleRunVisualAnalysis = useCallback(() => {
+    if (visualAnalysis.status === 'preparing' || visualAnalysis.status === 'analyzing') {
+      return;
+    }
     setInvestigationSelection(null);
     setPendingInvestigationZoom(null);
     void visualAnalysis.runAnalysis(imageUpload.image, colorExtraction.result);
   }, [visualAnalysis, imageUpload.image, colorExtraction.result]);
 
   const handleRunMainFullAnalysis = useCallback(async () => {
-    if (!imageUpload.image) return;
+    if (
+      !imageUpload.image ||
+      visualAnalysis.status === 'preparing' ||
+      visualAnalysis.status === 'analyzing'
+    ) {
+      return;
+    }
     const palette =
       colorExtraction.status === 'completed' && colorExtraction.result
         ? colorExtraction.result

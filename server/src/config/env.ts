@@ -14,7 +14,8 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(5000),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL: z.string().default('gemini-3.1-flash-lite')
+  GEMINI_MODEL: z.string().default('gemini-3.1-flash-lite'),
+  GEMINI_TIMEOUT_MS: z.coerce.number().int().min(5000).max(270000).default(75000)
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -144,7 +144,7 @@ export function useComparisonSlot(
   }, [upload.image, colorExtraction.result, visualAnalysis]);
 
   const runFullAnalysis = useCallback(async () => {
-    if (!upload.image) return;
+    if (!upload.image || isPipelineRunning) return;
     setIsPipelineRunning(true);
     try {
       // Reuse already-completed measured colours if present; otherwise extract locally first
@@ -164,7 +164,7 @@ export function useComparisonSlot(
     } finally {
       setIsPipelineRunning(false);
     }
-  }, [upload.image, colorExtraction, visualAnalysis]);
+  }, [upload.image, isPipelineRunning, colorExtraction, visualAnalysis]);
 
   const clearSlot = useCallback(() => {
     resetExtraction();

@@ -49,6 +49,8 @@ function mapErrorTitle(code: string): string {
       return 'Gemini API resource exhausted (429)';
     case 'MODEL_UNAVAILABLE':
       return 'Gemini model unavailable';
+    case 'ANALYSIS_TIMEOUT':
+      return 'Visual analysis timed out';
     case 'INVALID_AI_RESPONSE':
       return 'Invalid visual interpretation response';
     case 'INVALID_REQUEST':
@@ -73,9 +75,11 @@ export function useVisualAnalysis(): UseVisualAnalysisResult {
   const [error, setError] = useState<VisualAnalysisError | null>(null);
 
   const runSeqRef = useRef<number>(0);
+  const inFlightRef = useRef<boolean>(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const abortInFlight = useCallback(() => {
+    inFlightRef.current = false;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
@@ -103,8 +107,12 @@ export function useVisualAnalysis(): UseVisualAnalysisResult {
       image: UploadedImage | null,
       colorResult: PaletteExtractionResult | null
     ): Promise<VisualAnalysisResult | null> => {
+      // Prevent duplicate concurrent Gemini requests from rapid or repeated button clicks
+      if (inFlightRef.current) {
+        return null;
+      }
+
       const currentRun = ++runSeqRef.current;
-      abortInFlight();
 
       if (!image || !colorResult || colorResult.colors.length === 0) {
         setStatus('error');
@@ -120,6 +128,7 @@ export function useVisualAnalysis(): UseVisualAnalysisResult {
 
       const controller = new AbortController();
       abortControllerRef.current = controller;
+      inFlightRef.current = true;
 
       setError(null);
       setResult(null);
@@ -163,6 +172,7 @@ export function useVisualAnalysis(): UseVisualAnalysisResult {
           return null;
         }
 
+        inFlightRef.current = false;
         abortControllerRef.current = null;
         setResult(analysisResult);
         setStage(null);
@@ -174,11 +184,12 @@ export function useVisualAnalysis(): UseVisualAnalysisResult {
           return null;
         }
 
+        inFlightRef.current = false;
+        abortControllerRef.current = null;
+
         if (err instanceof DOMException && err.name === 'AbortError') {
           return null;
         }
-
-        abortControllerRef.current = null;
 
         const nextError: VisualAnalysisError =
           err instanceof ApiRequestError
@@ -204,7 +215,7 @@ export function useVisualAnalysis(): UseVisualAnalysisResult {
         return null;
       }
     },
-    [abortInFlight]
+    []
   );
 
   return {

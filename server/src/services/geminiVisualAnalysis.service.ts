@@ -14,6 +14,11 @@ import {
 } from '../schemas/visualAnalysis.schema.js';
 import { GeminiServiceError, getGeminiClient } from './geminiClient.js';
 
+export interface VisualAnalysisContext {
+  requestId?: string;
+  signal?: AbortSignal;
+}
+
 export interface VisualAnalysisResult {
   interpretation: VisualInterpretation;
   meta: {
@@ -21,6 +26,16 @@ export interface VisualAnalysisResult {
     durationMs: number;
     analyzedAt: string;
   };
+}
+
+function logServiceStage(
+  event: string,
+  fields: Record<string, string | number | boolean | undefined>
+): void {
+  const parts = Object.entries(fields)
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => `${key}=${value}`);
+  console.info(`[VisualAnalysis] stage=${event} ${parts.join(' ')}`);
 }
 
 const CONFIDENCE_SCHEMA: Schema = {
@@ -89,6 +104,7 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
     },
     semanticColors: {
       type: Type.ARRAY,
+      maxItems: '8',
       items: {
         type: Type.OBJECT,
         required: ['role', 'label', 'hex', 'matchedMeasuredHex', 'rationale', 'confidence'],
@@ -131,6 +147,7 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
         scaleSummary: { type: Type.STRING },
         hierarchy: {
           type: Type.ARRAY,
+          maxItems: '6',
           items: {
             type: Type.OBJECT,
             required: ['level', 'estimatedSize', 'estimatedWeight', 'lineHeight', 'usage', 'confidence'],
@@ -157,6 +174,7 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
         containerPadding: { type: Type.STRING },
         scaleSteps: {
           type: Type.ARRAY,
+          maxItems: '6',
           items: {
             type: Type.OBJECT,
             required: ['token', 'value', 'usage'],
@@ -172,6 +190,7 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
     },
     components: {
       type: Type.ARRAY,
+      maxItems: '8',
       items: {
         type: Type.OBJECT,
         required: ['name', 'category', 'visualTreatment', 'borderRadius', 'emphasis', 'confidence'],
@@ -198,6 +217,7 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
         contentWidth: { type: Type.STRING },
         regions: {
           type: Type.ARRAY,
+          maxItems: '6',
           items: {
             type: Type.OBJECT,
             required: ['name', 'role', 'proportion'],
@@ -223,6 +243,7 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
         shadowStyle: { type: Type.STRING },
         borderRadiusScale: {
           type: Type.ARRAY,
+          maxItems: '5',
           items: {
             type: Type.OBJECT,
             required: ['label', 'value', 'usage'],
@@ -239,6 +260,7 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
     },
     visualRegions: {
       type: Type.ARRAY,
+      maxItems: '8',
       description:
         '4 to 8 major visually distinct UI regions with normalized [0.0, 1.0] bounding boxes.',
       items: {
@@ -297,6 +319,7 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
           confidence: CONFIDENCE_SCHEMA,
           evidence: {
             type: Type.ARRAY,
+            maxItems: '3',
             items: { type: Type.STRING }
           }
         }
@@ -304,8 +327,9 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
     },
     visualElements: {
       type: Type.ARRAY,
+      maxItems: '10',
       description:
-        '4 to 12 distinctive visible visual elements (geometric motifs, backgrounds/textures, icons/symbols, component styles, decorative details) with normalized [0.0, 1.0] locations.',
+        '4 to 10 distinctive visible visual elements (geometric motifs, backgrounds/textures, icons/symbols, component styles, decorative details) with normalized [0.0, 1.0] locations.',
       items: {
         type: Type.OBJECT,
         required: [
@@ -343,6 +367,7 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
           boundingBox: BOUNDING_BOX_RESPONSE_SCHEMA,
           additionalLocations: {
             type: Type.ARRAY,
+            maxItems: '4',
             description:
               'Other genuinely visible occurrences of this exact visual element elsewhere on the screenshot. Leave empty [] if only one instance is visible.',
             items: BOUNDING_BOX_RESPONSE_SCHEMA
@@ -371,6 +396,7 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
               surfaceAndColor: { type: Type.STRING },
               styleTraits: {
                 type: Type.ARRAY,
+                maxItems: '4',
                 items: { type: Type.STRING }
               },
               visualRole: { type: Type.STRING }
@@ -379,6 +405,7 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
           confidence: CONFIDENCE_SCHEMA,
           evidence: {
             type: Type.ARRAY,
+            maxItems: '3',
             items: { type: Type.STRING }
           }
         }
@@ -386,6 +413,7 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
     },
     patternRelationships: {
       type: Type.ARRAY,
+      maxItems: '5',
       description:
         '0 to 5 shared recurring visual patterns that genuinely repeat across 2 or more separate screenshot locations. Omit single-instance elements.',
       items: {
@@ -413,6 +441,7 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
           description: { type: Type.STRING },
           elementNames: {
             type: Type.ARRAY,
+            maxItems: '6',
             description: 'Exact names from visualElements that participate in this shared pattern.',
             items: { type: Type.STRING }
           },
@@ -424,6 +453,7 @@ const VISUAL_INTERPRETATION_RESPONSE_SCHEMA: Schema = {
           confidence: CONFIDENCE_SCHEMA,
           evidence: {
             type: Type.ARRAY,
+            maxItems: '3',
             items: { type: Type.STRING }
           }
         }
@@ -445,7 +475,8 @@ const SYSTEM_INSTRUCTION = [
   '7. Every boundingBox (in visualRegions and visualElements) MUST use normalised decimal coordinates between 0.0 and 1.0 relative to the full screenshot (x = left / totalWidth, y = top / totalHeight, width = boxWidth / totalWidth, height = boxHeight / totalHeight), with x >= 0, y >= 0, width >= 0.02, height >= 0.02, x + width <= 1.0, and y + height <= 1.0. NEVER use pixel coordinates or 0-1000 integers.',
   '8. Set boundaryPrecision to "precise" only when edges are visually crisp (bordered cards, navbars, solid buttons), and "approximate" when edges blend into background whitespace.',
   '9. For visualElements, identify 4 to 10 genuinely visible distinctive visual elements across geometric-motif, background-texture, icon-symbol, component-style, and decorative-detail. Never claim an icon library or asset source unless directly verifiable from the pixels. Only include additionalLocations when the same visual element genuinely repeats in separate visible places; otherwise leave additionalLocations empty [] and set repetitionStatus to "individual".',
-  '10. For patternRelationships, ONLY group elements that genuinely repeat across 2 or more separate visible occurrences on the screenshot. NEVER claim repetition from a single occurrence. Reference exact element names from visualElements in elementNames.'
+  '10. For patternRelationships, ONLY group elements that genuinely repeat across 2 or more separate visible occurrences on the screenshot. NEVER claim repetition from a single occurrence. Reference exact element names from visualElements in elementNames.',
+  '11. Keep every description, rationale, and observation field concise and crisp (1 short sentence, ~8–20 words) and provide 1–2 brief evidence items per region, element, or pattern so the JSON response remains focused and fast to generate without omitting required findings.'
 ].join('\n');
 
 function buildPromptText(request: VisualAnalysisRequest): string {
@@ -784,30 +815,39 @@ function classifyGeminiError(err: unknown, model: string): GeminiServiceError {
   );
 }
 
-function isRetryableError(err: unknown): boolean {
-  const status =
-    typeof err === 'object' &&
-    err !== null &&
-    'status' in err &&
-    typeof (err as { status?: unknown }).status === 'number'
-      ? (err as { status: number }).status
-      : undefined;
-
-  if (status !== undefined) {
-    return status >= 500 || status === 408;
+function resolveTimeoutMs(): number {
+  const raw = process.env.GEMINI_TIMEOUT_MS;
+  if (raw !== undefined && raw.trim() !== '') {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed >= 5000 && parsed <= 270000) {
+      return Math.round(parsed);
+    }
   }
-
-  const msg = err instanceof Error ? err.message.toLowerCase() : '';
-  return (
-    msg.includes('fetch failed') ||
-    msg.includes('network') ||
-    msg.includes('timeout') ||
-    msg.includes('econnreset')
-  );
+  return env.GEMINI_TIMEOUT_MS;
 }
 
-async function sleep(ms: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, ms));
+function resolveThinkingLevel(model: string): ThinkingLevel {
+  // gemini-3.1-flash-lite defaults to MINIMAL (lowest latency without extra reasoning token overhead);
+  // non-lite models (e.g. gemini-4-hydrogen) do not support MINIMAL and use LOW.
+  return model.toLowerCase().includes('flash-lite')
+    ? ThinkingLevel.MINIMAL
+    : ThinkingLevel.LOW;
+}
+
+function isAbortOrTimeoutError(err: unknown): boolean {
+  if (err instanceof Error) {
+    if (err.name === 'AbortError' || err.name === 'TimeoutError') return true;
+    const msg = err.message.toLowerCase();
+    if (
+      msg.includes('aborted') ||
+      msg.includes('timed out') ||
+      msg.includes('timeout') ||
+      msg.includes('deadline exceeded')
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function normalizeHexUpper(value: string): string {
@@ -1110,10 +1150,14 @@ function validateAndNormalizeServerPatterns(
 }
 
 export async function analyzeScreenshotVisuals(
-  request: VisualAnalysisRequest
+  request: VisualAnalysisRequest,
+  context: VisualAnalysisContext = {}
 ): Promise<VisualAnalysisResult> {
   const ai = getGeminiClient();
   const model = (process.env.GEMINI_MODEL || env.GEMINI_MODEL || 'gemini-3.1-flash-lite').trim();
+  const timeoutMs = resolveTimeoutMs();
+  const thinkingLevel = resolveThinkingLevel(model);
+  const requestId = context.requestId ?? 'internal';
   const startedAt = performance.now();
 
   const imagePart = {
@@ -1123,38 +1167,111 @@ export async function analyzeScreenshotVisuals(
     }
   };
 
+  const promptText = buildPromptText(request);
   const textPart = {
-    text: buildPromptText(request)
+    text: promptText
   };
 
-  let response: GenerateContentResponse | null = null;
-  const maxAttempts = 3;
+  const requestAbortController = new AbortController();
+  let timedOut = false;
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      response = await ai.models.generateContent({
-        model,
-        contents: { parts: [imagePart, textPart] },
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          responseMimeType: 'application/json',
-          responseSchema: VISUAL_INTERPRETATION_RESPONSE_SCHEMA,
-          thinkingConfig: {
-            thinkingLevel: ThinkingLevel.LOW
-          }
-        }
-      });
-      break;
-    } catch (err) {
-      if (attempt < maxAttempts && isRetryableError(err)) {
-        await sleep(400 * Math.pow(2, attempt - 1));
-        continue;
-      }
-      throw classifyGeminiError(err, model);
+  const timeoutHandle = setTimeout(() => {
+    timedOut = true;
+    requestAbortController.abort(new Error(`Gemini request exceeded ${timeoutMs}ms timeout`));
+  }, timeoutMs);
+
+  const handleExternalAbort = () => {
+    requestAbortController.abort(
+      context.signal?.reason ?? new Error('Caller aborted visual analysis request')
+    );
+  };
+
+  if (context.signal) {
+    if (context.signal.aborted) {
+      clearTimeout(timeoutHandle);
+      handleExternalAbort();
+    } else {
+      context.signal.addEventListener('abort', handleExternalAbort, { once: true });
     }
   }
 
+  const geminiStartedAt = performance.now();
+  logServiceStage('gemini_request_started', {
+    requestId,
+    model,
+    thinkingLevel,
+    timeoutMs,
+    mimeType: request.mimeType,
+    dimensions: `${request.dimensions.width}x${request.dimensions.height}`,
+    imageBase64Bytes: request.imageBase64.length,
+    promptChars: promptText.length
+  });
+
+  let response: GenerateContentResponse;
+  try {
+    // Single deliberate request with explicit timeout (no retry loop that could multiply latency or API usage)
+    response = await ai.models.generateContent({
+      model,
+      contents: { parts: [imagePart, textPart] },
+      config: {
+        systemInstruction: SYSTEM_INSTRUCTION,
+        responseMimeType: 'application/json',
+        responseSchema: VISUAL_INTERPRETATION_RESPONSE_SCHEMA,
+        thinkingConfig: {
+          thinkingLevel
+        },
+        abortSignal: requestAbortController.signal,
+        httpOptions: {
+          timeout: timeoutMs
+        }
+      }
+    });
+  } catch (err) {
+    const elapsedMs = Math.max(1, Math.round(performance.now() - geminiStartedAt));
+
+    if (context.signal?.aborted && !timedOut) {
+      throw err;
+    }
+
+    if (timedOut || isAbortOrTimeoutError(err)) {
+      const timeoutSeconds = Math.round(timeoutMs / 1000);
+      console.error(
+        `[GeminiVisualAnalysis] requestId=${requestId} timeout model=${model} timeoutMs=${timeoutMs} elapsedMs=${elapsedMs}`
+      );
+      throw new GeminiServiceError(
+        'ANALYSIS_TIMEOUT',
+        504,
+        `Visual interpretation timed out after ${timeoutSeconds} seconds while waiting for Gemini (${model}). Please retry or try a smaller screenshot.`,
+        {
+          model,
+          timeoutMs,
+          elapsedMs,
+          upstreamMessage: `Upstream Gemini call exceeded ${timeoutMs}ms server timeout`
+        }
+      );
+    }
+
+    throw classifyGeminiError(err, model);
+  } finally {
+    clearTimeout(timeoutHandle);
+    if (context.signal) {
+      context.signal.removeEventListener('abort', handleExternalAbort);
+    }
+  }
+
+  const geminiMs = Math.max(1, Math.round(performance.now() - geminiStartedAt));
   const rawText = response?.text?.trim();
+  const usage = response?.usageMetadata;
+
+  logServiceStage('gemini_response_received', {
+    requestId,
+    geminiMs,
+    responseChars: rawText?.length ?? 0,
+    promptTokens: usage?.promptTokenCount,
+    candidatesTokens: usage?.candidatesTokenCount,
+    thoughtsTokens: usage?.thoughtsTokenCount
+  });
+
   if (!rawText) {
     throw new GeminiServiceError(
       'INVALID_AI_RESPONSE',
@@ -1163,6 +1280,7 @@ export async function analyzeScreenshotVisuals(
     );
   }
 
+  const parseStartedAt = performance.now();
   let parsedJson: unknown;
   try {
     parsedJson = JSON.parse(rawText);
@@ -1231,6 +1349,15 @@ export async function analyzeScreenshotVisuals(
       };
     })
   };
+
+  const parseMs = Math.max(0, Math.round(performance.now() - parseStartedAt));
+  logServiceStage('parsing_completed', {
+    requestId,
+    parseMs,
+    regions: normalizedInterpretation.visualRegions.length,
+    elements: normalizedInterpretation.visualElements.length,
+    patterns: normalizedInterpretation.patternRelationships.length
+  });
 
   const durationMs = Math.max(1, Math.round(performance.now() - startedAt));
 

@@ -132,7 +132,7 @@ NODE_ENV=production PORT=3000 GEMINI_API_KEY="your-key-here" npm start
 The repository includes a root `vercel.json` configured for **Vercel Services**:
 
 - `client` (`root: "client"`, `framework: "vite"`) serves the frontend at `/(.*)`.
-- `server` (`root: "server"`, `framework: "express"`, `entrypoint: "src/app.ts"`) serves `/api/(.*)` with a configured `maxDuration` of `60` seconds for AI screenshot analysis requests.
+- `server` (`root: "server"`, `framework: "express"`, `entrypoint: "src/app.ts"`, `buildCommand: "npm run type-check"`) serves `/api/(.*)` with Fluid Compute (`"fluid": true`), a `300`-second `maxDuration` (Hobby plan maximum with Fluid Compute), and a deliberate `75`-second server-side Gemini timeout (`GEMINI_TIMEOUT_MS`) so timeouts return structured JSON errors cleanly before platform limits.
 
 Test both services locally together with:
 

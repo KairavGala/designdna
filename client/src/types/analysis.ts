@@ -142,6 +142,8 @@ export interface VisualAnalysisErrorDetails {
   quotaId?: string;
   quotaLimit?: string;
   retryDelay?: string;
+  timeoutMs?: number;
+  elapsedMs?: number;
   upstreamMessage?: string;
 }
 

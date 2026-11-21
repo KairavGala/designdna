@@ -12,6 +12,7 @@ export type GeminiErrorCode =
   | 'SERVICE_OVERLOADED'
   | 'RATE_LIMITED'
   | 'MODEL_UNAVAILABLE'
+  | 'ANALYSIS_TIMEOUT'
   | 'INVALID_AI_RESPONSE'
   | 'UPSTREAM_ERROR';
 
@@ -23,6 +24,8 @@ export interface GeminiErrorDetails {
   quotaId?: string;
   quotaLimit?: string;
   retryDelay?: string;
+  timeoutMs?: number;
+  elapsedMs?: number;
   upstreamMessage?: string;
 }
 

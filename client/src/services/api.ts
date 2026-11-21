@@ -75,20 +75,61 @@ export async function fetchHealth(): Promise<HealthResponse> {
   return JSON.parse(rawBody) as HealthResponse;
 }
 
+const CLIENT_ANALYSIS_TIMEOUT_MS = 95_000;
+
 export async function requestVisualAnalysis(
   payload: VisualAnalysisRequestPayload,
   signal?: AbortSignal
 ): Promise<VisualAnalysisResult> {
   const endpoint = '/api/analyze/visual';
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json'
-    },
-    body: JSON.stringify(payload),
-    signal
-  });
+  const requestController = new AbortController();
+  let timedOut = false;
+
+  const timeoutHandle = globalThis.setTimeout(() => {
+    timedOut = true;
+    requestController.abort();
+  }, CLIENT_ANALYSIS_TIMEOUT_MS);
+
+  const handleExternalAbort = () => {
+    requestController.abort();
+  };
+
+  if (signal) {
+    if (signal.aborted) {
+      globalThis.clearTimeout(timeoutHandle);
+      requestController.abort();
+    } else {
+      signal.addEventListener('abort', handleExternalAbort, { once: true });
+    }
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      body: JSON.stringify(payload),
+      signal: requestController.signal
+    });
+  } catch (err) {
+    if (timedOut) {
+      throw new ApiRequestError(
+        504,
+        'ANALYSIS_TIMEOUT',
+        `Visual analysis timed out after ${Math.round(CLIENT_ANALYSIS_TIMEOUT_MS / 1000)} seconds waiting for a response from the server. Please retry.`,
+        { timeoutMs: CLIENT_ANALYSIS_TIMEOUT_MS }
+      );
+    }
+    throw err;
+  } finally {
+    globalThis.clearTimeout(timeoutHandle);
+    if (signal) {
+      signal.removeEventListener('abort', handleExternalAbort);
+    }
+  }
 
   const contentType = response.headers.get('content-type');
   const rawBody = await response.text();
@@ -96,6 +137,14 @@ export async function requestVisualAnalysis(
 
   if (!response.ok) {
     if (!jsonResponse) {
+      if (response.status === 504 || rawBody.includes('FUNCTION_INVOCATION_TIMEOUT')) {
+        throw new ApiRequestError(
+          504,
+          'ANALYSIS_TIMEOUT',
+          'Visual analysis timed out at the hosting gateway (HTTP 504) before Gemini completed. Please retry or try a smaller screenshot.'
+        );
+      }
+
       throw new ApiRequestError(
         response.status,
         'NON_JSON_RESPONSE',
