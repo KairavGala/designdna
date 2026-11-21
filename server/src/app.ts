@@ -28,27 +28,32 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Register API Routes
 app.use('/api', apiRouter);
 
-// Production Static File Serving & SPA Fallback
-const clientDistPath = path.resolve(__dirname, '../../client/dist');
-const indexPath = path.join(clientDistPath, 'index.html');
+// Production Static File Serving & SPA Fallback (for unified standalone Node server;
+// skipped on Vercel Services where the `client` service serves static assets separately)
+if (!process.env.VERCEL) {
+  const clientDistPath = path.resolve(__dirname, '../../client/dist');
+  const indexPath = path.join(clientDistPath, 'index.html');
 
-if (fs.existsSync(clientDistPath)) {
-  // Serve static assets from compiled client
-  app.use(express.static(clientDistPath));
+  if (fs.existsSync(clientDistPath)) {
+    // Serve static assets from compiled client
+    app.use(express.static(clientDistPath));
 
-  // SPA fallback for non-API GET requests
-  app.use((req, res, next) => {
-    if (req.method === 'GET' && !req.path.startsWith('/api')) {
-      if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-        return;
+    // SPA fallback for non-API GET requests
+    app.use((req, res, next) => {
+      if (req.method === 'GET' && !req.path.startsWith('/api')) {
+        if (fs.existsSync(indexPath)) {
+          res.sendFile(indexPath);
+          return;
+        }
       }
-    }
-    next();
-  });
-} else if (env.NODE_ENV === 'production') {
-  console.warn(`⚠️ Warning: Production mode enabled but client build not found at ${clientDistPath}`);
+      next();
+    });
+  } else if (env.NODE_ENV === 'production') {
+    console.warn(`⚠️ Warning: Production mode enabled but client build not found at ${clientDistPath}`);
+  }
 }
 
 // Global Centralized Error Handler
 app.use(errorHandler);
+
+export default app;

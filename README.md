@@ -127,7 +127,22 @@ NODE_ENV=production PORT=3000 GEMINI_API_KEY="your-key-here" npm start
 - Serves live health telemetry at `http://localhost:3000/api/health`
 - Serves AI visual interpretation at `POST /api/analyze/visual`
 
-### 3. Deployment Checklist
+### 3. Deploying on Vercel (Services)
+
+The repository includes a root `vercel.json` configured for **Vercel Services**:
+
+- `client` (`root: "client"`, `framework: "vite"`) serves the frontend at `/(.*)`.
+- `server` (`root: "server"`, `framework: "express"`, `entrypoint: "src/app.ts"`) serves `/api/(.*)` with a configured `maxDuration` of `60` seconds for AI screenshot analysis requests.
+
+Test both services locally together with:
+
+```bash
+vercel dev
+```
+
+Set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`) in your Vercel Project Environment Variables before deploying.
+
+### 4. Standalone Node.js Deployment Checklist
 
 1. Configure `GEMINI_API_KEY` as a private server secret in your hosting platform (e.g., Cloud Run, Render, Fly.io, Railway, or Docker secret manager).
 2. Set `NODE_ENV=production` and let your platform inject `PORT` (Express binds to `0.0.0.0:$PORT`).
