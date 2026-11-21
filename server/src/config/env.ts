@@ -4,12 +4,11 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
 // Load environment variables from server root or project root .env
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
 
 // Try loading server/.env or root .env
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
-dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+dotenv.config({ path: path.resolve(currentDir, '../../.env') });
+dotenv.config({ path: path.resolve(currentDir, '../../../.env') });
 
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(5000),

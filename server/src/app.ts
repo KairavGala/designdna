@@ -6,8 +6,7 @@ import { env } from './config/env.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { apiRouter } from './routes/api.router.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
 
 export const app: Express = express();
 
@@ -31,7 +30,7 @@ app.use('/api', apiRouter);
 // Production Static File Serving & SPA Fallback (for unified standalone Node server;
 // skipped on Vercel Services where the `client` service serves static assets separately)
 if (!process.env.VERCEL) {
-  const clientDistPath = path.resolve(__dirname, '../../client/dist');
+  const clientDistPath = path.resolve(currentDir, '../../client/dist');
   const indexPath = path.join(clientDistPath, 'index.html');
 
   if (fs.existsSync(clientDistPath)) {
