@@ -53,6 +53,10 @@ function mapErrorTitle(code: string): string {
       return 'Invalid visual interpretation response';
     case 'INVALID_REQUEST':
       return 'Invalid analysis payload';
+    case 'PAYLOAD_TOO_LARGE':
+      return 'Screenshot payload exceeds server limit';
+    case 'INVALID_JSON':
+      return 'Invalid request encoding';
     case 'NON_JSON_RESPONSE':
       return 'Visual analysis endpoint returned HTML instead of JSON';
     case 'INVALID_JSON_RESPONSE':
@@ -126,7 +130,8 @@ export function useVisualAnalysis(): UseVisualAnalysisResult {
         const prepared = await prepareAnalysisPayload(
           image.file,
           image.width,
-          image.height
+          image.height,
+          image.mimeType
         );
 
         if (currentRun !== runSeqRef.current) {

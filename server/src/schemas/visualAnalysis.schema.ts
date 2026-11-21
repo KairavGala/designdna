@@ -8,19 +8,83 @@ export const measuredColorInputSchema = z.object({
   rank: z.number().int().positive()
 });
 
-export const visualAnalysisRequestSchema = z.object({
-  imageBase64: z
-    .string()
-    .min(64, 'Image payload is too small')
-    .max(9_000_000, 'Encoded image payload exceeds maximum allowed size'),
-  mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp']),
-  fileName: z.string().min(1).max(255),
-  dimensions: z.object({
-    width: z.number().int().positive(),
-    height: z.number().int().positive()
-  }),
-  measuredPalette: z.array(measuredColorInputSchema).min(1).max(16)
-});
+const BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
+
+function verifyBase64ImageHeader(
+  base64: string,
+  mimeType: 'image/png' | 'image/jpeg' | 'image/webp'
+): boolean {
+  const compact = base64.replace(/\s+/g, '');
+  if (compact.length < 16 || compact.length % 4 !== 0 || !BASE64_PATTERN.test(compact)) {
+    return false;
+  }
+
+  // Decode only the first 16 base64 chars (= 12 header bytes) for zero-overhead magic-byte inspection
+  const header = Buffer.from(compact.slice(0, 16), 'base64');
+  if (header.length < 12) return false;
+
+  if (mimeType === 'image/png') {
+    return (
+      header[0] === 0x89 &&
+      header[1] === 0x50 &&
+      header[2] === 0x4e &&
+      header[3] === 0x47 &&
+      header[4] === 0x0d &&
+      header[5] === 0x0a &&
+      header[6] === 0x1a &&
+      header[7] === 0x0a
+    );
+  }
+
+  if (mimeType === 'image/jpeg') {
+    return header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
+  }
+
+  if (mimeType === 'image/webp') {
+    return (
+      header[0] === 0x52 &&
+      header[1] === 0x49 &&
+      header[2] === 0x46 &&
+      header[3] === 0x46 &&
+      header[8] === 0x57 &&
+      header[9] === 0x45 &&
+      header[10] === 0x42 &&
+      header[11] === 0x50
+    );
+  }
+
+  return false;
+}
+
+export const visualAnalysisRequestSchema = z
+  .object({
+    imageBase64: z
+      .string()
+      .min(64, 'Image payload is too small')
+      .max(9_000_000, 'Encoded image payload exceeds maximum allowed size'),
+    mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp']),
+    fileName: z
+      .string()
+      .min(1)
+      .max(255)
+      .refine((value) => !/[\r\n\0]/.test(value), {
+        message: 'Filename contains disallowed control characters'
+      }),
+    dimensions: z.object({
+      width: z.number().int().positive().max(16384),
+      height: z.number().int().positive().max(16384)
+    }),
+    measuredPalette: z.array(measuredColorInputSchema).min(1).max(16)
+  })
+  .superRefine((data, ctx) => {
+    if (!verifyBase64ImageHeader(data.imageBase64, data.mimeType)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['imageBase64'],
+        message: `Encoded image payload is not valid base64 or does not match the declared ${data.mimeType} binary signature.`
+      });
+    }
+  });
 
 export const semanticColorRoleSchema = z.enum([
   'background',

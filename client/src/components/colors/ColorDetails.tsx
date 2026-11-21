@@ -147,7 +147,7 @@ export const ColorDetails: React.FC<ColorDetailsProps> = ({
         {/* Honest measured vs. inferred boundary note */}
         <p className="text-xs text-muted leading-relaxed pt-3 border-t border-border">
           Measured directly from sampled pixels. Semantic design roles (primary brand, accent,
-          background, text) require contextual interpretation and are deferred to Milestone 5.
+          background, text) are assigned separately by AI Visual Interpretation.
         </p>
       </div>
     </SectionCard>

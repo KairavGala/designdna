@@ -211,7 +211,7 @@ export const PAGE_METADATA: Record<PageId, PageMeta> = {
   }
 };
 
-export const APP_VERSION = '0.1.0';
-export const APP_MILESTONE = 'M12 Comparison & Refinement';
+export const APP_VERSION = '1.0.0';
+export const APP_MILESTONE = 'M13 Launch Ready';
 export const PRODUCT_POSITIONING = 'Website Visual Intelligence';
 export const PRODUCT_TAGLINE = 'Deconstruct any website. Discover its visual DNA.';

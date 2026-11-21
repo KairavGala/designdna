@@ -47,7 +47,8 @@ function resolveMimeType(
 export async function prepareAnalysisPayload(
   file: File,
   originalWidth: number,
-  originalHeight: number
+  originalHeight: number,
+  verifiedMimeType?: string
 ): Promise<PreparedAnalysisImage> {
   const longestSide = Math.max(originalWidth, originalHeight);
 
@@ -56,7 +57,7 @@ export async function prepareAnalysisPayload(
     const imageBase64 = await readBlobAsBase64(file);
     return {
       imageBase64,
-      mimeType: resolveMimeType(file.type)
+      mimeType: resolveMimeType(verifiedMimeType || file.type)
     };
   }
 

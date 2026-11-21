@@ -15,14 +15,16 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(5000),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL: z.string().default('gemini-4-hydrogen')
+  GEMINI_MODEL: z.string().default('gemini-3.1-flash-lite')
 });
 
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
   console.error('❌ Invalid environment configuration:');
-  console.error(parsed.error.format());
+  console.error(
+    parsed.error.issues.map((issue) => `${issue.path.join('.') || 'env'}: ${issue.message}`)
+  );
   throw new Error('Invalid environment configuration');
 }
 

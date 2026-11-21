@@ -123,11 +123,11 @@ export async function extractInvestigationAssets(
   const decoded = await decodeImage(file);
   const regionColors: Record<string, RegionMeasuredColor[]> = {};
   const elementAssets: Record<string, ElementVisualAssets> = {};
+  const sampleCanvas = document.createElement('canvas');
+  const cropCanvas = document.createElement('canvas');
 
   try {
-    const sampleCanvas = document.createElement('canvas');
     const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
-    const cropCanvas = document.createElement('canvas');
     const cropCtx = cropCanvas.getContext('2d');
 
     if (!sampleCtx || !cropCtx) {
@@ -195,5 +195,9 @@ export async function extractInvestigationAssets(
     return { regionColors, elementAssets };
   } finally {
     decoded.release();
+    sampleCanvas.width = 0;
+    sampleCanvas.height = 0;
+    cropCanvas.width = 0;
+    cropCanvas.height = 0;
   }
 }

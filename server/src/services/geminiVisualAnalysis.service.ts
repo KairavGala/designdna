@@ -1113,7 +1113,7 @@ export async function analyzeScreenshotVisuals(
   request: VisualAnalysisRequest
 ): Promise<VisualAnalysisResult> {
   const ai = getGeminiClient();
-  const model = (process.env.GEMINI_MODEL || env.GEMINI_MODEL || 'gemini-4-hydrogen').trim();
+  const model = (process.env.GEMINI_MODEL || env.GEMINI_MODEL || 'gemini-3.1-flash-lite').trim();
   const startedAt = performance.now();
 
   const imagePart = {

@@ -6,11 +6,15 @@ node_modules/
 # Build output
 dist/
 build/
+*.tsbuildinfo
 
 # Environment
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+
+# Temporary verification artifacts
+.aistudio_tmp_verify/
 
 # Logs
 npm-debug.log*

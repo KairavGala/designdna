@@ -28,6 +28,13 @@ export const AppShell: React.FC<AppShellProps> = ({
 
   return (
     <div className="min-h-screen bg-canvas text-ink flex overflow-x-clip">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:bg-accent focus:px-3.5 focus:py-2 focus:text-xs focus:font-semibold focus:text-canvas"
+      >
+        Skip to main content
+      </a>
+
       <Sidebar
         activePage={activePage}
         onNavigate={onNavigate}
@@ -46,7 +53,7 @@ export const AppShell: React.FC<AppShellProps> = ({
           sessionContext={sessionContext}
         />
 
-        <main className="flex-1 min-w-0">
+        <main id="main-content" className="flex-1 min-w-0">
           {children}
         </main>
       </div>

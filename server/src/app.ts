@@ -11,6 +11,16 @@ const __dirname = path.dirname(__filename);
 
 export const app: Express = express();
 
+// Hide framework signature and attach baseline security headers
+// (X-Frame-Options is intentionally omitted so iframe preview environments work)
+app.disable('x-powered-by');
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
+
 // Middleware: Body parsing with sensible limits
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
